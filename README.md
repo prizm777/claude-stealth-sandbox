@@ -7,9 +7,9 @@
 <a name="русский"></a>
 ## Описание на русском
 
-**Claude Stealth Sandbox** — это готовое окружение и интерактивный хаб для безопасной работы с **Claude Desktop** и **Claude Code (CLI)** на Windows. Sandbox полностью изолирует процессы Claude, защищает аккаунт от геоблокировок Anthropic, блокирует утечки WebRTC, подменяет фингерпринт устройства, автоматически устанавливает компоненты и решает проблему зависания процессов в памяти Windows.
+**Claude Stealth Sandbox** — это готовое окружение и интерактивный хаб для безопасной работы с **Claude Desktop** и **Claude Code (CLI)** на Windows. Sandbox полностью изолирует процессы Claude, защищает аккаунт от геоблокировок Anthropic, динамически синхронизирует часовой пояс с VPN-выходом, блокирует утечки WebRTC, подменяет фингерпринт устройства, умно импортирует существующие сессии и решает проблему зависания процессов в памяти Windows.
 
-![Release](https://img.shields.io/badge/Release-v1.2.0-blue?style=for-the-badge)
+![Release](https://img.shields.io/badge/Release-v1.3.0-blue?style=for-the-badge)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Security](https://img.shields.io/badge/Security-Kill--Switch%20Active-brightgreen?style=for-the-badge)
@@ -18,7 +18,7 @@
 
 ### Интерактивное Меню Управления (`start.bat`):
 
-При запуске главного файла `start.bat` открывается удобное интерактивное меню без лишних символов и эмодзи:
+При запуске главного файла `start.bat` открывается удобное интерактивное меню:
 
 ```text
 ======================================================================
@@ -46,27 +46,30 @@
 
 ### Ключевые возможности:
 
-1. **Аппаратный Kill Switch:**
-   - Автоматически сканирует и находит активный порт Proxy/VPN (Happ, Xray, Sing-box, V2Ray, Clash на портах `10808`, `10809`, `2080`, `7890` или заданный через `$env:CLAUDE_PROXY_PORT`).
-   - Перед каждым запуском делает проверочный запрос к внешнему API: если возвращается IP из РФ или прокси отключился — **запуск немедленно блокируется**, предотвращая бан аккаунта.
-2. **Защита от утечек WebRTC и телеметрии:**
+1. **Аппаратный Kill Switch и расширенный гео-блок:**
+   - Автоматически находит активный порт Proxy/VPN (Happ, Xray, Sing-box, V2Ray, Clash на портах `10808`, `10809`, `2080`, `7890` или `$env:CLAUDE_PROXY_PORT`).
+   - Перед каждым запуском проверяет IP через внешний API: если прокси отключен или возвращает IP из стран под санкциями (`RU`, `BY`, `IR`, `KP`, `CU`, `SY`) — **запуск немедленно блокируется**, предотвращая бан аккаунта.
+2. **Динамическая синхронизация часового пояса (Zero Timezone Mismatch):**
+   - Большинство антифрод-систем банят за несоответствие часового пояса и IP (например, когда IP финский или американский, а система рапортует локальное время).
+   - Sandbox на лету считывает точный часовой пояс сервера выхода (`$check.timezone`, например `Europe/Helsinki`, `America/New_York`, `Europe/Amsterdam`) и принудительно выставляет его в переменную `$env:TZ`.
+3. **Smart Detection & 1-Click Migration (Умный перенос профилей):**
+   - Никакой паники от чистого экрана! При первом запуске песочница проверяет, есть ли на этом компьютере уже авторизованный аккаунт в Windows.
+   - **Claude Desktop:** если найден залогиненный аккаунт в Windows, песочница предлагает в 1 клик (Enter) скопировать авторизацию и куки в защищенную изолированную папку `data/desktop-profile`. Вы сразу остаетесь залогинены в своем аккаунте со всеми подписками.
+   - **Claude Code CLI:** если в Windows есть существующие проекты и история сессий, песочница предлагает перенести их, и команда `/resume` сразу отображает все ваши диалоги.
+4. **Защита от утечек WebRTC и телеметрии:**
    - Принудительно отключает непроксированный UDP в Chromium (`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, `--enforce-webrtc-ip-permission-check`).
-   - Запрещает сбор телеметрии, краш-дампы и сбор метрик Anthropic (`DISABLE_TELEMETRY=1`, `DO_NOT_TRACK=1`, `DISABLE_GROWTHBOOK=1`, `--disable-breakpad`, `--disable-crash-reporter`).
-3. **Спуфинг окружения и фингерпринта:**
-   - Подменяет имя компьютера на `MacBook-Air`.
-   - Подменяет часовой пояс на `Europe/Berlin`, локаль на `en-US`.
+   - Запрещает сбор телеметрии, краш-дампы и трекинг Anthropic (`DISABLE_TELEMETRY=1`, `DO_NOT_TRACK=1`, `DISABLE_GROWTHBOOK=1`, `--disable-breakpad`, `--disable-crash-reporter`).
+5. **Спуфинг окружения и фингерпринта:**
+   - Подменяет имя компьютера на `MacBook-Air`, локаль на `en-US`.
    - Генерирует уникальные случайные 64-символьные `machineID` и `userID`.
-   - Изолирует данные профиля в папке `data/` — Claude никогда не читает ваш реальный системный `%USERPROFILE%` или `%APPDATA%`.
-4. **Решение бага «В режиме паузы» (Anti-Zombie Watchdog):**
+   - Изолирует профиль в папке `data/` — Claude никогда не читает системный `%USERPROFILE%`.
+6. **Решение бага «В режиме паузы» (Anti-Zombie Watchdog):**
    - В Windows 10/11 приложения UWP/MSIX при закрытии окна сворачиваются в фоновые процессы со статусом **«Приостановлено» (Suspended)** и держат память и сопутствующие процессы `chrome-native-host.exe`.
-   - Sandbox автоматически отключает фоновое зависание в реестре Windows (`BackgroundAccessApplications\Claude_pzs8sxrjxfjjc`).
-   - В фоне работает скрытый независимый **Watchdog-сторож**: при закрытии окна консоли он за миллисекунды подчистую выгружает все связанные процессы Claude из памяти (0 висячих процессов в Диспетчере задач).
-5. **Двойной режим (Обычный / Администратор):**
+   - Sandbox отключает фоновое зависание в реестре Windows (`BackgroundAccessApplications\Claude_pzs8sxrjxfjjc`).
+   - В фоне работает скрытый независимый **Watchdog-сторож**: при закрытии окна консоли он подчистую выгружает все связанные процессы Claude из памяти (0 висячих процессов в Диспетчере задач).
+7. **Двойной режим (Обычный / Администратор):**
    - **Обычный запуск:** Безопасный стандартный режим песочницы.
-   - **Запуск от имени администратора:** Claude получает токен высокой целостности (High Integrity / RunAs), а для Claude Code CLI автоматически включается `--dangerously-skip-permissions`. Это позволяет Claude взаимодействовать с системными процессами и консолями.
-6. **Установка в 1 клик с преднастроенной изоляцией:**
-   - **[8] Установить Claude Desktop:** Проверяет наличие клиента в системе; если не установлен — скачивает и устанавливает через `winget` (`Anthropic.Claude`) или официальный инсталлятор. Сразу применяет отключение UWP-зависания, останавливает и отключает фоновую службу `CoworkVMService`, удаляет автозагрузку из реестра, преднастраивает защищенный профиль и создает ярлык на Рабочем столе.
-   - **[9] Установить Claude Code CLI:** Проверяет Node.js/npm (устанавливает Node.js LTS при отсутствии), устанавливает пакет `@anthropic-ai/claude-code` глобально с поддержкой текущего прокси и генерирует изолированный конфиг песочницы со случайными анонимными ID.
+   - **Запуск от имени администратора:** Claude получает токен высокой целостности (High Integrity / RunAs), а для Claude Code CLI автоматически включается `--dangerously-skip-permissions`.
 
 ---
 
@@ -81,7 +84,7 @@
 3. Запустите **`start.bat`**.
 4. В меню выберите:
    * `[8]` или `[9]` — если нужно установить Claude Desktop или CLI в один клик;
-   * `[4]` — проверить статус подключения, внешний IP и Kill-Switch;
+   * `[4]` — проверить статус подключения, страну, внешний IP, таймзону и Kill-Switch;
    * `[1]` или `[2]` — запустить Claude Desktop;
    * `[3]` — запустить Claude Code CLI.
 
@@ -90,19 +93,17 @@
 <a name="english"></a>
 ## English Description
 
-**Claude Stealth Sandbox** is an interactive control suite and hardened sandbox for **Claude Desktop** and **Claude Code (CLI)** on Windows. It isolates Claude processes from your host OS, blocks WebRTC IP leaks, spoofs device fingerprints, automates clean installation, and eliminates lingering "Suspended / In Pause" background processes.
+**Claude Stealth Sandbox** is an interactive control suite and hardened sandbox for **Claude Desktop** and **Claude Code (CLI)** on Windows. It isolates Claude processes from your host OS, eliminates WebRTC IP leaks, dynamically synchronizes timezone with your VPN exit node, spoofs device fingerprints, smartly migrates existing logins, and eliminates lingering "Suspended / In Pause" background processes.
 
 ### Key Features:
 
-* **Interactive Control Hub (`start.bat`):** Clean ASCII menu for regular & elevated launches, VPN testing, emergency cache clearing, one-click automated installation, and desktop shortcut generation.
-* **Strict Kill-Switch:** Probes local proxy inbounds (ports `10808`, `10809`, `2080`, `7890`) and validates external IP check before startup. Prevents running if the proxy is down or returning a blacklisted/blocked country IP.
-* **WebRTC & Telemetry Hardening:** Drops non-proxied UDP (`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, `--enforce-webrtc-ip-permission-check`), disables crash reporters, error collectors, and GrowthBook telemetry.
-* **Fingerprint Anonymization:** Spoofs device identifier to `MacBook-Air`, timezone to `Europe/Berlin`, locale to `en-US`, and generates randomized persistent 64-character UUIDs.
-* **Anti-Zombie Process Watchdog:** Windows 10/11 MSIX lifecycle often freezes closed Electron apps into a "Suspended" state with lingering `chrome-native-host.exe` processes. This sandbox disables UWP suspension in the registry and employs a hidden background watchdog that terminates all tree processes immediately when the console window is closed.
-* **One-Click Pre-Hardened Installation:**
-  - **[8] Install Claude Desktop:** Automatically installs official Claude Desktop via `winget` or direct download, disables UWP background suspension, disables `CoworkVMService`, strips registry autorun, configures spoofed profile, and creates a desktop shortcut.
-  - **[9] Install Claude Code CLI:** Installs Node.js LTS (if needed), globally installs `@anthropic-ai/claude-code` via npm routing through active proxy, and seeds randomized anonymous IDs in `data/cli-profile`.
-* **Dual Privilege Support:** Standard user sandbox by default; auto-elevates to High Integrity token with `--dangerously-skip-permissions` when launched via *Run as Administrator*.
+* **Strict Kill-Switch & Extended Geo-Enforcement:** Probes local proxy ports (`10808`, `10809`, `2080`, `7890`) and validates external IP before startup. Immediately terminates launch if the proxy is down or returns an IP from sanctioned regions (`RU`, `BY`, `IR`, `KP`, `CU`, `SY`).
+* **Dynamic Timezone Alignment:** Prevents anti-fraud flags caused by Timezone Mismatches. Automatically parses exit node timezone (`$check.timezone`, e.g. `Europe/Helsinki`, `America/New_York`) and binds it to `$env:TZ`.
+* **Smart Detection & 1-Click Profile Migration:** No blank profile panics! Automatically detects existing Windows installations of Claude Desktop and Claude Code CLI, offering to clone authentication tokens, cookies, and chat history into the hardened `data/` directory.
+* **WebRTC & Telemetry Hardening:** Drops non-proxied UDP (`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`), disables crash reporters, error collectors, and GrowthBook telemetry.
+* **Fingerprint Anonymization:** Spoofs device identifier to `MacBook-Air`, locale to `en-US`, and generates randomized persistent 64-character UUIDs.
+* **Anti-Zombie Process Watchdog:** Eliminates Windows 10/11 MSIX lifecycle "Suspended" state leaks with automated registry tuning and a background watchdog supervisor.
+* **1-Click Pre-Hardened Setup:** Built-in automated installers for Claude Desktop (`Anthropic.Claude`) and Claude Code CLI (`@anthropic-ai/claude-code`).
 
 ### File Structure:
 

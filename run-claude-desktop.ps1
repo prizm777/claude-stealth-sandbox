@@ -55,18 +55,21 @@ Write-Host "OK (порт $proxyPort)" -ForegroundColor Green
 
 # 2. Проверка внешнего IP и страны через прокси (Kill-Switch)
 Write-Host "[2/4] Проверка внешнего IP через Proxy... " -NoNewline
+$targetTz = "UTC"
 try {
     $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
-    if ($check.country -eq "RU") {
+    $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
+    if ($blockedCountries -contains $check.country) {
         Write-Host "ОШИБКА!" -ForegroundColor Red
         Write-Host ""
-        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из РФ ($($check.ip))!" -ForegroundColor Red
+        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
         Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
         Write-Host ""
         Read-Host "Нажмите Enter для выхода..."
         exit 1
     }
-    Write-Host "OK ($($check.ip) [$($check.country)])" -ForegroundColor Green
+    if ($check.timezone) { $targetTz = $check.timezone }
+    Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
 } catch {
     Write-Host "ОШИБКА!" -ForegroundColor Red
     Write-Host ""
@@ -78,7 +81,7 @@ try {
 }
 
 # 3. Подготовка изолированного профиля и очистка блокировок
-Write-Host "[3/4] Подготовка изолированного профиля... " -NoNewline
+Write-Host "[3/4] Подготовка изолированного профиля... " -ForegroundColor Cyan
 
 # Отключаем фоновую приостановку UWP в Windows (предотвращает зависание в диспетчере задач)
 $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications\Claude_pzs8sxrjxfjjc"
@@ -91,6 +94,35 @@ Set-ItemProperty -Path $regPath -Name "DisabledByUser" -Value 1 -Type DWord -For
 $profileDir = Join-Path $PSScriptRoot "data\desktop-profile"
 if (-not (Test-Path $profileDir)) {
     New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+}
+
+# Smart Detection: проверка наличия залогиненного профиля в Windows
+$hasExistingSandboxLogin = Test-Path "$profileDir\Network\Cookies"
+$hostClaudeData = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_pzs8sxrjxfjjc"
+if (-not $hasExistingSandboxLogin -and (Test-Path "$hostClaudeData\Network\Cookies")) {
+    Write-Host ""
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    Write-Host " [*] ОБНАРУЖЕН ЗАЛОГИНЕННЫЙ АККАУНТ CLAUDE DESKTOP В WINDOWS!" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    Write-Host "  Хотите скопировать вашу авторизацию и сессии в песочницу," -ForegroundColor Gray
+    Write-Host "  чтобы остаться залогиненным под защитой Kill-Switch?" -ForegroundColor Gray
+    Write-Host ""
+    $importChoice = Read-Host "  Скопировать авторизацию в песочницу? [Y/n] (Enter = Да)"
+    if ($importChoice -eq "" -or $importChoice -match "^[yYдД]") {
+        Write-Host "  [*] Клонирование авторизации и истории в песочницу... " -NoNewline -ForegroundColor Cyan
+        $itemsToCopy = @("Local State", "Network", "Local Storage", "Session Storage", "IndexedDB", "WebStorage", "ant-did", "Preferences", "config.json")
+        foreach ($item in $itemsToCopy) {
+            $srcItem = Join-Path $hostClaudeData $item
+            if (Test-Path $srcItem) {
+                Copy-Item -Path $srcItem -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Write-Host "OK!" -ForegroundColor Green
+        Write-Host "  [OK] Сессия перенесена! Вы будете сразу залогинены в своем аккаунте." -ForegroundColor Green
+    } else {
+        Write-Host "  [*] Запуск с чистого профиля (потребуется отдельный вход)." -ForegroundColor DarkGray
+    }
+    Write-Host ""
 }
 
 # Снятие блокировки Singleton Lock
@@ -157,7 +189,7 @@ $appArgs = @(
 )
 
 # Переменные окружения для защиты часового пояса и подавления телеметрии
-$env:TZ = "Europe/Berlin"
+$env:TZ = $targetTz
 $env:LANG = "en_US.UTF-8"
 $env:HTTP_PROXY = "http://127.0.0.1:$proxyPort"
 $env:HTTPS_PROXY = "http://127.0.0.1:$proxyPort"

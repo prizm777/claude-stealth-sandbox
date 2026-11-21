@@ -45,13 +45,16 @@ function Test-ProxyStatus {
         Write-Host "  [OK] Локальный Proxy/VPN порт: $activePort (Доступен)" -ForegroundColor Green
         try {
             $ipData = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$activePort" -TimeoutSec 4
+            $detectedTz = if ($ipData.timezone) { $ipData.timezone } else { "UTC" }
             Write-Host "  [OK] Внешний IP: $($ipData.ip)" -ForegroundColor Green
             Write-Host "  [OK] Страна выхода: $($ipData.country) ($($ipData.city), $($ipData.region))" -ForegroundColor Green
+            Write-Host "  [OK] Часовой пояс выхода: $detectedTz" -ForegroundColor Green
             Write-Host "  [OK] Провайдер: $($ipData.org)" -ForegroundColor Gray
-            if ($ipData.country -eq "RU") {
-                Write-Host "  [!] ВНИМАНИЕ: Прокси вернул IP из РФ! Claude заблокирует доступ!" -ForegroundColor Red
+            $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
+            if ($blockedCountries -contains $ipData.country) {
+                Write-Host "  [!] ВНИМАНИЕ: Прокси вернул IP из заблокированного региона ($($ipData.country))! Claude заблокирует доступ!" -ForegroundColor Red
             } else {
-                Write-Host "  [OK] Kill-Switch статус: БЕЗОПАСНО (Доступ к Claude разрешен)" -ForegroundColor Green
+                Write-Host "  [OK] Kill-Switch статус: БЕЗОПАСНО (Доступ к Claude разрешен, TZ синхронизирована)" -ForegroundColor Green
             }
         } catch {
             Write-Host "  [-] Ошибка опроса внешнего IP через порт ${activePort}: $_" -ForegroundColor Yellow
@@ -215,6 +218,24 @@ function Install-ClaudeDesktopWithIsolation {
     }
     Write-Host "  [OK] Профиль песочницы сконфигурирован (спуфинг: MacBook-Air, en-US)." -ForegroundColor Green
     
+    # 4.5. Smart Detection: предложение перенести существующую авторизацию Windows
+    $hasSandboxLogin = Test-Path "$profileDir\Network\Cookies"
+    $hostClaudeData = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_pzs8sxrjxfjjc"
+    if (-not $hasSandboxLogin -and (Test-Path "$hostClaudeData\Network\Cookies")) {
+        Write-Host "  [*] Обнаружен существующий залогиненный аккаунт в Windows." -ForegroundColor Yellow
+        $importAns = Read-Host "      Скопировать авторизацию в песочницу, чтобы не входить заново? [Y/n] (Enter = Да)"
+        if ($importAns -eq "" -or $importAns -match "^[yYдД]") {
+            $itemsToCopy = @("Local State", "Network", "Local Storage", "Session Storage", "IndexedDB", "WebStorage", "ant-did", "Preferences", "config.json")
+            foreach ($item in $itemsToCopy) {
+                $srcItem = Join-Path $hostClaudeData $item
+                if (Test-Path $srcItem) {
+                    Copy-Item -Path $srcItem -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            Write-Host "  [OK] Авторизация перенесена в песочницу." -ForegroundColor Green
+        }
+    }
+    
     # 5. Экспорт официальной иконки
     if (-not (Test-Path "$PSScriptRoot\icon.ico")) {
         $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -311,6 +332,24 @@ function Install-ClaudeCodeWithIsolation {
         $fakeConfig | ConvertTo-Json | Set-Content -Path $sandboxConfig -Encoding UTF8
     }
     Write-Host "  [OK] Сгенерированы случайные анонимные machineID и userID." -ForegroundColor Green
+    
+    # Smart Detection: предложение перенести историю сессий CLI из Windows
+    $hostCliData = Join-Path $env:USERPROFILE ".claude"
+    $sandboxCliData = Join-Path $sandboxDir ".claude"
+    if ((-not (Test-Path "$sandboxCliData\projects")) -and (Test-Path "$hostCliData\projects")) {
+        Write-Host "  [*] Обнаружены существующие проекты и сессии Claude Code в Windows." -ForegroundColor Yellow
+        $importCliAns = Read-Host "      Скопировать существующие сессии в песочницу? [Y/n] (Enter = Да)"
+        if ($importCliAns -eq "" -or $importCliAns -match "^[yYдД]") {
+            if (-not (Test-Path $sandboxCliData)) { New-Item -ItemType Directory -Path $sandboxCliData -Force | Out-Null }
+            Copy-Item -Path "$hostCliData\projects" -Destination "$sandboxCliData\" -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$hostCliData\file-history" -Destination "$sandboxCliData\" -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path "$hostCliData\settings.json") {
+                Copy-Item -Path "$hostCliData\settings.json" -Destination "$sandboxCliData\" -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "  [OK] Все проекты и сессии перенесены в песочницу." -ForegroundColor Green
+        }
+    }
+    
     Write-Host "  [OK] Песочница Claude Code настроена." -ForegroundColor Green
     
     Write-Host "`n[OK] Claude Code CLI готов к запуску через пункт [3] меню!" -ForegroundColor Green

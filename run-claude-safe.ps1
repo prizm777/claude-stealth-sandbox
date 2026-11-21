@@ -55,18 +55,21 @@ Write-Host "OK (порт $proxyPort)" -ForegroundColor Green
 
 # 2. Проверка внешнего IP через прокси
 Write-Host "[2/5] Проверка внешнего IP через Proxy... " -NoNewline
+$targetTz = "UTC"
 try {
     $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
-    if ($check.country -eq "RU") {
+    $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
+    if ($blockedCountries -contains $check.country) {
         Write-Host "ОШИБКА!" -ForegroundColor Red
         Write-Host ""
-        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из РФ ($($check.ip))!" -ForegroundColor Red
+        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
         Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
         Write-Host ""
         Read-Host "Нажмите Enter для выхода..."
         exit 1
     }
-    Write-Host "OK ($($check.ip) [$($check.country)])" -ForegroundColor Green
+    if ($check.timezone) { $targetTz = $check.timezone }
+    Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
 } catch {
     Write-Host "ОШИБКА!" -ForegroundColor Red
     Write-Host ""
@@ -100,10 +103,38 @@ if (-not $mountedToThisFolder) {
 Write-Host "OK" -ForegroundColor Green
 
 # 4. Настройка изолированной песочницы на диске X:
-Write-Host "[4/5] Изоляция профиля и анонимизация окружения... " -NoNewline
+Write-Host "[4/5] Изоляция профиля и анонимизация окружения... " -ForegroundColor Cyan
 $sandboxDir = "X:\data\cli-profile"
 if (-not (Test-Path $sandboxDir)) {
     New-Item -ItemType Directory -Path $sandboxDir -Force | Out-Null
+}
+
+# Smart Detection: проверка наличия существующих сессий CLI в Windows
+$sandboxCliData = Join-Path $sandboxDir ".claude"
+$hostCliData = Join-Path $env:USERPROFILE ".claude"
+if ((-not (Test-Path "$sandboxCliData\projects")) -and (Test-Path "$hostCliData\projects")) {
+    Write-Host ""
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    Write-Host " [*] ОБНАРУЖЕНЫ СУЩЕСТВУЮЩИЕ СЕССИИ CLAUDE CODE CLI В WINDOWS!" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    Write-Host "  Хотите скопировать историю проектов и сессии в песочницу?" -ForegroundColor Gray
+    Write-Host "  (Все ваши прошлые диалоги будут доступны по команде /resume)" -ForegroundColor Gray
+    Write-Host ""
+    $importChoice = Read-Host "  Скопировать сессии в песочницу? [Y/n] (Enter = Да)"
+    if ($importChoice -eq "" -or $importChoice -match "^[yYдД]") {
+        Write-Host "  [*] Клонирование истории проектов в песочницу... " -NoNewline -ForegroundColor Cyan
+        if (-not (Test-Path $sandboxCliData)) { New-Item -ItemType Directory -Path $sandboxCliData -Force | Out-Null }
+        Copy-Item -Path "$hostCliData\projects" -Destination "$sandboxCliData\" -Recurse -Force -ErrorAction SilentlyContinue
+        Copy-Item -Path "$hostCliData\file-history" -Destination "$sandboxCliData\" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path "$hostCliData\settings.json") {
+            Copy-Item -Path "$hostCliData\settings.json" -Destination "$sandboxCliData\" -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "OK!" -ForegroundColor Green
+        Write-Host "  [OK] Все проекты и сессии перенесены!" -ForegroundColor Green
+    } else {
+        Write-Host "  [*] Запуск с чистого профиля CLI." -ForegroundColor DarkGray
+    }
+    Write-Host ""
 }
 
 $sandboxConfig = Join-Path $sandboxDir ".claude.json"
@@ -133,7 +164,7 @@ $env:TMP = "$sandboxDir\Temp"
 $env:USERNAME = "developer"
 $env:USER = "developer"
 $env:COMPUTERNAME = "MacBook-Air"
-$env:TZ = "Europe/Berlin"
+$env:TZ = $targetTz
 $env:LANG = "en_US.UTF-8"
 
 # Подавление телеметрии Anthropic
