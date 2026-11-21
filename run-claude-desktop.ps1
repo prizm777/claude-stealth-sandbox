@@ -130,11 +130,11 @@ Write-Host "OK" -ForegroundColor Green
 # 4. Поиск бинарника Claude Desktop
 Write-Host "[4/4] Запуск Claude Desktop (Secure Sandbox)..." -ForegroundColor Cyan
 
-$aliasExe = "$env:LOCALAPPDATA\Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe"
+$aliasExe = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe"
 if (-not (Test-Path $aliasExe)) {
     $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($pkg -and (Test-Path "$($pkg.InstallLocation)\app\claude.exe")) {
-        $aliasExe = "$($pkg.InstallLocation)\app\claude.exe"
+    if ($pkg -and (Test-Path (Join-Path $pkg.InstallLocation "app\claude.exe"))) {
+        $aliasExe = Join-Path $pkg.InstallLocation "app\claude.exe"
     }
 }
 

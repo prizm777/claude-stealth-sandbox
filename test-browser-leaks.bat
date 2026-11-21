@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title WebRTC & IP Leak Audit
+title WebRTC and IP Leak Audit
 
 echo =========================================================
 echo    WebRTC and IP Leak Verification Tool
@@ -9,6 +9,10 @@ echo =========================================================
 echo.
 
 set PROXY_PORT=10808
+if not "%CLAUDE_PROXY_PORT%"=="" set PROXY_PORT=%CLAUDE_PROXY_PORT%
+
+rem Detect active proxy port if default 10808 is closed
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "$ports = @(10808, 10809, 2080, 7890); if ($env:CLAUDE_PROXY_PORT) { $ports = @([int]$env:CLAUDE_PROXY_PORT) + $ports }; foreach ($p in $ports) { try { $c = New-Object System.Net.Sockets.TcpClient; $a = $c.BeginConnect('127.0.0.1', $p, $null, $null); if ($a.AsyncWaitHandle.WaitOne(300, $false)) { $c.EndConnect($a); $c.Close(); Write-Output $p; break } $c.Close() } catch {} }"') do set "PROXY_PORT=%%i"
 
 rem Find Chrome or Edge
 set TARGET_BROWSER=

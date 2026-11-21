@@ -85,7 +85,7 @@ $currentFolder = $PSScriptRoot
 $substList = & subst
 $mountedToThisFolder = $false
 foreach ($line in $substList) {
-    if ($line -like "$driveLetter\*=>$currentFolder*") {
+    if ($line -match "(?i)^$driveLetter\\:\s*=>\s*" + [regex]::Escape($currentFolder)) {
         $mountedToThisFolder = $true
         break
     }
