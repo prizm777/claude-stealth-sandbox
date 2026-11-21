@@ -54,7 +54,7 @@ function Test-ProxyStatus {
                 Write-Host "  [✓] Kill-Switch статус: БЕЗОПАСНО (Доступ к Claude разрешен)" -ForegroundColor Green
             }
         } catch {
-            Write-Host "  [-] Ошибка опроса внешнего IP через порт $activePort: $_" -ForegroundColor Yellow
+            Write-Host "  [-] Ошибка опроса внешнего IP через порт ${activePort}: $_" -ForegroundColor Yellow
         }
     } else {
         Write-Host "  [-] Proxy/VPN не обнаружен на стандартных портах (10808, 10809, 2080, 7890)!" -ForegroundColor Red
@@ -85,7 +85,7 @@ function Create-DesktopShortcut {
     Write-Host "`n[+] Создание ярлыка на Рабочем столе..." -ForegroundColor Cyan
     try {
         $desktopPath = [System.Environment]::GetFolderPath("Desktop")
-        $shortcutPath = Join-Path $desktopPath "Claude (Stealth Sandbox).lnk"
+        $shortcutPath = Join-Path $desktopPath "Claude (Secure).lnk"
         $targetBat = Join-Path $PSScriptRoot "start.bat"
         
         $wsh = New-Object -ComObject WScript.Shell
@@ -95,9 +95,13 @@ function Create-DesktopShortcut {
         $shortcut.Description = "Запуск Claude в безопасной песочнице с защитой от бана"
         
         # Попытка найти иконку Claude
-        $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($pkg -and (Test-Path "$($pkg.InstallLocation)\app\claude.exe")) {
-            $shortcut.IconLocation = "$($pkg.InstallLocation)\app\claude.exe,0"
+        if (Test-Path "$PSScriptRoot\icon.ico") {
+            $shortcut.IconLocation = "$PSScriptRoot\icon.ico,0"
+        } else {
+            $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($pkg -and (Test-Path "$($pkg.InstallLocation)\app\claude.exe")) {
+                $shortcut.IconLocation = "$($pkg.InstallLocation)\app\claude.exe,0"
+            }
         }
         $shortcut.Save()
         
