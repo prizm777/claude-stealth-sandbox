@@ -14,6 +14,11 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Security](https://img.shields.io/badge/Security-Kill--Switch%20Active-brightgreen?style=for-the-badge)
 
+> [!WARNING]
+> **Статус проекта: Публичное тестирование (Community Beta ~50/50)**
+> Эта версия песочницы только что вышла и активно тестируется в боевых условиях. Из-за огромного разнообразия версий Windows 10/11, VPN-протоколов (Amnezia, Outline, WireGuard, V2Ray, Clash, Happ) и провайдеров возможны непредвиденные системные баги или шероховатости.
+> Если вы наткнулись на ошибку, вылет или странное поведение — пожалуйста, **[создайте Issue на GitHub](https://github.com/timofejmihee1-cpu/claude-stealth-sandbox/issues)**, и мы оперативно выпустим фикс!
+
 ---
 
 ### Интерактивное Меню Управления (`start.bat`):
@@ -95,6 +100,11 @@
 ## English Description
 
 **Claude Stealth Sandbox** is an interactive control suite and hardened sandbox for **Claude Desktop** and **Claude Code (CLI)** on Windows. It isolates Claude processes from your host OS, eliminates WebRTC IP leaks, supports both Local Proxies and System VPNs (TUN/WireGuard/Outline), dynamically synchronizes timezone with your exit node, spoofs device fingerprints, smartly migrates existing logins, and eliminates lingering "Suspended / In Pause" background processes.
+
+> [!WARNING]
+> **Project Status: Public Community Beta (~50/50 Testing)**
+> This is a newly released version under active real-world community testing. Due to the wide diversity of Windows 10/11 builds, VPN/proxy stacks (Amnezia, Outline, WireGuard, V2Ray, Clash, Sing-box), and ISP routing, unexpected edge-case bugs may occur.
+> If you encounter any bugs, crashes, or glitches, please **[open an Issue on GitHub](https://github.com/timofejmihee1-cpu/claude-stealth-sandbox/issues)** so we can patch it immediately!
 
 ### Key Features:
 
