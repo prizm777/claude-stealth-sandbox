@@ -19,7 +19,7 @@ if ($isAdmin) {
     Write-Host ""
 }
 
-# 1. Проверка активности VPN / Proxy (порты 10808, 10809, 2080, 7890)
+# 1. Проверка активности VPN / Proxy (порты 10808, 10809, 2080, 7890 или системный TUN/VPN)
 Write-Host "[1/4] Проверка подключения Proxy/VPN... " -NoNewline
 $proxyPort = $null
 $candidatePorts = @(10808, 10809, 2080, 7890)
@@ -31,7 +31,7 @@ foreach ($port in $candidatePorts) {
     try {
         $client = New-Object System.Net.Sockets.TcpClient
         $async = $client.BeginConnect("127.0.0.1", $port, $null, $null)
-        if ($async.AsyncWaitHandle.WaitOne(1000, $false)) {
+        if ($async.AsyncWaitHandle.WaitOne(800, $false)) {
             $client.EndConnect($async)
             $client.Close()
             $proxyPort = $port
@@ -41,49 +41,65 @@ foreach ($port in $candidatePorts) {
     } catch {}
 }
 
-if (-not $proxyPort) {
-    Write-Host "ОШИБКА!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "[-] VPN/Proxy не запущен или локальные порты закрыты!" -ForegroundColor Red
-    Write-Host "[-] Запуск Claude Desktop остановлен (Kill Switch активен)." -ForegroundColor Red
-    Write-Host "[-] Твой реальный IP в безопасности. Включи VPN и повтори запуск." -ForegroundColor Yellow
-    Write-Host ""
-    Read-Host "Нажмите Enter для выхода..."
-    exit 1
-}
-Write-Host "OK (порт $proxyPort)" -ForegroundColor Green
-
-# 2. Проверка внешнего IP и страны через прокси (Kill-Switch)
-Write-Host "[2/4] Проверка внешнего IP через Proxy... " -NoNewline
+$isTunMode = $false
+$blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
 $targetTz = "UTC"
-try {
-    $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
-    $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
-    if ($blockedCountries -contains $check.country) {
+
+if ($proxyPort) {
+    Write-Host "OK (Локальный прокси порт $proxyPort)" -ForegroundColor Green
+    Write-Host "[2/4] Проверка внешнего IP через Proxy... " -NoNewline
+    try {
+        $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
+        if ($blockedCountries -contains $check.country) {
+            Write-Host "ОШИБКА!" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
+            Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
+            Write-Host ""
+            Read-Host "Нажмите Enter для выхода..."
+            exit 1
+        }
+        if ($check.timezone) { $targetTz = $check.timezone }
+        Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
+    } catch {
+        Write-Host "ОШИБКА!" -ForegroundColor Red
+        Write-Host "[-] Не удалось проверить IP через Proxy: $_" -ForegroundColor Red
+        Read-Host "Нажмите Enter для выхода..."
+        exit 1
+    }
+} else {
+    # Проверка на системный VPN / TUN (Amnezia, Outline, WireGuard, OpenVPN)
+    try {
+        $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -TimeoutSec 4 -ErrorAction Stop
+        if ($blockedCountries -contains $check.country) {
+            Write-Host "ОШИБКА!" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "[-] VPN/Proxy не запущен! Текущий IP: $($check.ip) [$($check.country)]" -ForegroundColor Red
+            Write-Host "[-] Запуск остановлен (Kill-Switch). Включите VPN и повторите запуск." -ForegroundColor Yellow
+            Write-Host ""
+            Read-Host "Нажмите Enter для выхода..."
+            exit 1
+        }
+        $isTunMode = $true
+        if ($check.timezone) { $targetTz = $check.timezone }
+        Write-Host "OK (Системный VPN / TUN режим)" -ForegroundColor Green
+        Write-Host "[2/4] Проверка внешнего IP (TUN)... " -NoNewline
+        Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
+    } catch {
         Write-Host "ОШИБКА!" -ForegroundColor Red
         Write-Host ""
-        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
-        Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
+        Write-Host "[-] Нет подключения к интернету или VPN/Proxy выключен!" -ForegroundColor Red
+        Write-Host "[-] Запуск Claude Desktop остановлен (Kill-Switch активен)." -ForegroundColor Red
         Write-Host ""
         Read-Host "Нажмите Enter для выхода..."
         exit 1
     }
-    if ($check.timezone) { $targetTz = $check.timezone }
-    Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
-} catch {
-    Write-Host "ОШИБКА!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "[-] Не удалось проверить IP через Proxy: $_" -ForegroundColor Red
-    Write-Host "[-] Запуск остановлен для безопасности." -ForegroundColor Red
-    Write-Host ""
-    Read-Host "Нажмите Enter для выхода..."
-    exit 1
 }
 
 # 3. Подготовка изолированного профиля и очистка блокировок
 Write-Host "[3/4] Подготовка изолированного профиля... " -ForegroundColor Cyan
 
-# Отключаем фоновую приостановку UWP в Windows (предотвращает зависание в диспетчере задач)
+# Отключаем фоновую приостановку UWP в Windows
 $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications\Claude_pzs8sxrjxfjjc"
 if (-not (Test-Path $regPath)) {
     New-Item -Path $regPath -Force | Out-Null
@@ -125,9 +141,13 @@ if (-not $hasExistingSandboxLogin -and (Test-Path "$hostClaudeData\Network\Cooki
     Write-Host ""
 }
 
-# Снятие блокировки Singleton Lock
-if (Test-Path "$profileDir\lockfile") {
-    Remove-Item -Path "$profileDir\lockfile" -Force -ErrorAction SilentlyContinue
+# Снятие блокировок Chromium singleton lock
+$lockFiles = @("lockfile", "SingletonLock", "SingletonSocket", "SingletonCookie")
+foreach ($lf in $lockFiles) {
+    $p = Join-Path $profileDir $lf
+    if (Test-Path $p) {
+        Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # Спуфинг имени устройства (MacBook-Air) в конфиге
@@ -179,21 +199,30 @@ if (-not (Test-Path $aliasExe)) {
 
 # Аргументы безопасности Chromium / Electron
 $appArgs = @(
-    "--proxy-server=http://127.0.0.1:$proxyPort",
-    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-    "--enforce-webrtc-ip-permission-check",
-    "--user-data-dir=`"$profileDir`"",
     "--lang=en-US",
     "--disable-breakpad",
-    "--disable-crash-reporter"
+    "--disable-crash-reporter",
+    "--user-data-dir=`"$profileDir`""
 )
+
+if ($isTunMode) {
+    # В режиме TUN весь сетевой стек уже маршрутизируется через виртуальный адаптер VPN
+    $appArgs += "--force-webrtc-ip-handling-policy=default_public_interface_only"
+} else {
+    # В режиме локального прокси принудительно направляем трафик и отключаем непроксированный UDP
+    $appArgs += "--proxy-server=http://127.0.0.1:$proxyPort"
+    $appArgs += "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"
+    $appArgs += "--enforce-webrtc-ip-permission-check"
+}
 
 # Переменные окружения для защиты часового пояса и подавления телеметрии
 $env:TZ = $targetTz
 $env:LANG = "en_US.UTF-8"
-$env:HTTP_PROXY = "http://127.0.0.1:$proxyPort"
-$env:HTTPS_PROXY = "http://127.0.0.1:$proxyPort"
-$env:ALL_PROXY = "socks5://127.0.0.1:$proxyPort"
+if (-not $isTunMode) {
+    $env:HTTP_PROXY = "http://127.0.0.1:$proxyPort"
+    $env:HTTPS_PROXY = "http://127.0.0.1:$proxyPort"
+    $env:ALL_PROXY = "socks5://127.0.0.1:$proxyPort"
+}
 $env:DISABLE_TELEMETRY = "1"
 $env:DO_NOT_TRACK = "1"
 $env:DISABLE_ERROR_REPORTING = "1"
@@ -203,7 +232,9 @@ $env:DISABLE_GROWTHBOOK = "1"
 # Запуск скрытого независимого сторожа (Watchdog)
 $watchdogPath = Join-Path $PSScriptRoot "claude-watchdog.ps1"
 if (Test-Path $watchdogPath) {
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPath`" -launcherPid $PID -profileDir `"$profileDir`"" -WindowStyle Hidden
+    $wdArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPath`" -launcherPid $PID -profileDir `"$profileDir`""
+    if ($isTunMode) { $wdArgs += " -liveKillSwitch" }
+    Start-Process powershell.exe -ArgumentList $wdArgs -WindowStyle Hidden
 }
 
 if ($isAdmin) {
@@ -234,9 +265,12 @@ try {
         }
     }
 } finally {
-    Stop-Process -Name "claude", "chrome-native-host" -Force -ErrorAction SilentlyContinue
-    taskkill /F /IM claude.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
-    if (Test-Path "$profileDir\lockfile") {
-        Remove-Item -Path "$profileDir\lockfile" -Force -ErrorAction SilentlyContinue
+    Stop-Process -Name "claude", "claude-desktop", "chrome-native-host" -Force -ErrorAction SilentlyContinue
+    taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
+    foreach ($lf in $lockFiles) {
+        $p = Join-Path $profileDir $lf
+        if (Test-Path $p) {
+            Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
+        }
     }
 }

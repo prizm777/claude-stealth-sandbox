@@ -1,6 +1,6 @@
 ﻿# ==============================================================================
 #  Claude Code CLI Secure Sandbox Launcher
-#  Features: Isolated Profile, Hardware Spoofing, Proxy Enforcement & Watchdog
+#  Features: Isolated Profile, Dynamic Drive, Hardware Spoofing & Watchdog
 # ==============================================================================
 $ErrorActionPreference = "Stop"
 
@@ -19,7 +19,7 @@ if ($isAdmin) {
     Write-Host ""
 }
 
-# 1. Проверка активности VPN / Proxy
+# 1. Проверка активности VPN / Proxy (порты 10808, 10809, 2080, 7890 или системный TUN/VPN)
 Write-Host "[1/5] Проверка подключения Proxy/VPN... " -NoNewline
 $proxyPort = $null
 $candidatePorts = @(10808, 10809, 2080, 7890)
@@ -31,7 +31,7 @@ foreach ($port in $candidatePorts) {
     try {
         $client = New-Object System.Net.Sockets.TcpClient
         $async = $client.BeginConnect("127.0.0.1", $port, $null, $null)
-        if ($async.AsyncWaitHandle.WaitOne(1000, $false)) {
+        if ($async.AsyncWaitHandle.WaitOne(800, $false)) {
             $client.EndConnect($async)
             $client.Close()
             $proxyPort = $port
@@ -41,70 +41,98 @@ foreach ($port in $candidatePorts) {
     } catch {}
 }
 
-if (-not $proxyPort) {
-    Write-Host "ОШИБКА!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "[-] VPN/Proxy не запущен или локальные порты закрыты!" -ForegroundColor Red
-    Write-Host "[-] Запуск немедленно заблокирован (Kill Switch)!" -ForegroundColor Red
-    Write-Host "[-] Твой реальный IP никуда не ушел. Запусти VPN и повтори." -ForegroundColor Yellow
-    Write-Host ""
-    Read-Host "Нажмите Enter для выхода..."
-    exit 1
-}
-Write-Host "OK (порт $proxyPort)" -ForegroundColor Green
-
-# 2. Проверка внешнего IP через прокси
-Write-Host "[2/5] Проверка внешнего IP через Proxy... " -NoNewline
+$isTunMode = $false
+$blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
 $targetTz = "UTC"
-try {
-    $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
-    $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
-    if ($blockedCountries -contains $check.country) {
+
+if ($proxyPort) {
+    Write-Host "OK (Локальный прокси порт $proxyPort)" -ForegroundColor Green
+    Write-Host "[2/5] Проверка внешнего IP через Proxy... " -NoNewline
+    try {
+        $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
+        if ($blockedCountries -contains $check.country) {
+            Write-Host "ОШИБКА!" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
+            Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
+            Write-Host ""
+            Read-Host "Нажмите Enter для выхода..."
+            exit 1
+        }
+        if ($check.timezone) { $targetTz = $check.timezone }
+        Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
+    } catch {
+        Write-Host "ОШИБКА!" -ForegroundColor Red
+        Write-Host "[-] Не удалось связаться с сервером проверки через прокси: $_" -ForegroundColor Red
+        Read-Host "Нажмите Enter для выхода..."
+        exit 1
+    }
+} else {
+    # Проверка прямого соединения на системный VPN / TUN (Amnezia, Outline, WireGuard)
+    try {
+        $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -TimeoutSec 4 -ErrorAction Stop
+        if ($blockedCountries -contains $check.country) {
+            Write-Host "ОШИБКА!" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "[-] VPN/Proxy не запущен! Текущий IP: $($check.ip) [$($check.country)]" -ForegroundColor Red
+            Write-Host "[-] Запуск остановлен (Kill-Switch). Включите VPN и повторите запуск." -ForegroundColor Yellow
+            Write-Host ""
+            Read-Host "Нажмите Enter для выхода..."
+            exit 1
+        }
+        $isTunMode = $true
+        if ($check.timezone) { $targetTz = $check.timezone }
+        Write-Host "OK (Системный VPN / TUN режим)" -ForegroundColor Green
+        Write-Host "[2/5] Проверка внешнего IP (TUN)... " -NoNewline
+        Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
+    } catch {
         Write-Host "ОШИБКА!" -ForegroundColor Red
         Write-Host ""
-        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
-        Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
+        Write-Host "[-] Нет подключения к интернету или VPN/Proxy выключен!" -ForegroundColor Red
+        Write-Host "[-] Запуск Claude Code остановлен (Kill-Switch активен)." -ForegroundColor Red
         Write-Host ""
         Read-Host "Нажмите Enter для выхода..."
         exit 1
     }
-    if ($check.timezone) { $targetTz = $check.timezone }
-    Write-Host "OK ($($check.ip) [$($check.country)], TZ: $targetTz)" -ForegroundColor Green
-} catch {
-    Write-Host "ОШИБКА!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "[-] Не удалось связаться с сервером проверки через прокси: $_" -ForegroundColor Red
-    Write-Host "[-] Запуск остановлен для вашей безопасности." -ForegroundColor Red
-    Write-Host ""
-    Read-Host "Нажмите Enter для выхода..."
-    exit 1
 }
 
-# 3. Идемпотентное монтирование виртуального диска X:
-Write-Host "[3/5] Монтирование виртуального диска X:... " -NoNewline
-$driveLetter = "X:"
+# 3. Идемпотентное монтирование виртуального диска (динамический выбор свободной буквы)
+Write-Host "[3/5] Монтирование виртуального диска... " -NoNewline
 $currentFolder = $PSScriptRoot
+$availableLetters = @('X', 'Y', 'Z', 'W', 'V', 'U', 'T')
+$driveLetter = $null
 
 $substList = & subst
-$mountedToThisFolder = $false
 foreach ($line in $substList) {
-    if ($line -match "(?i)^$driveLetter\\:\s*=>\s*" + [regex]::Escape($currentFolder)) {
-        $mountedToThisFolder = $true
-        break
+    foreach ($l in $availableLetters) {
+        if ($line -match "(?i)^$l\\:\s*=>\s*" + [regex]::Escape($currentFolder)) {
+            $driveLetter = "$l`:"
+            break
+        }
+    }
+    if ($driveLetter) { break }
+}
+
+if (-not $driveLetter) {
+    foreach ($l in $availableLetters) {
+        if (-not (Get-PSDrive -Name $l -ErrorAction SilentlyContinue) -and -not (Test-Path "$l`:\")) {
+            $driveLetter = "$l`:"
+            & subst $driveLetter "$currentFolder" | Out-Null
+            break
+        }
     }
 }
 
-if (-not $mountedToThisFolder) {
-    if (Test-Path "$driveLetter\") {
-        & subst $driveLetter /D 2>$null | Out-Null
-    }
+if (-not $driveLetter) {
+    $driveLetter = "X:"
+    & subst $driveLetter /D 2>$null | Out-Null
     & subst $driveLetter "$currentFolder" | Out-Null
 }
-Write-Host "OK" -ForegroundColor Green
+Write-Host "OK (Диск $driveLetter)" -ForegroundColor Green
 
-# 4. Настройка изолированной песочницы на диске X:
+# 4. Настройка изолированной песочницы на диске
 Write-Host "[4/5] Изоляция профиля и анонимизация окружения... " -ForegroundColor Cyan
-$sandboxDir = "X:\data\cli-profile"
+$sandboxDir = "$driveLetter\data\cli-profile"
 if (-not (Test-Path $sandboxDir)) {
     New-Item -ItemType Directory -Path $sandboxDir -Force | Out-Null
 }
@@ -151,9 +179,11 @@ if (-not (Test-Path $sandboxConfig)) {
 }
 
 # Подмена системных переменных окружения
-$env:HTTP_PROXY = "http://127.0.0.1:$proxyPort"
-$env:HTTPS_PROXY = "http://127.0.0.1:$proxyPort"
-$env:ALL_PROXY = "socks5://127.0.0.1:$proxyPort"
+if (-not $isTunMode) {
+    $env:HTTP_PROXY = "http://127.0.0.1:$proxyPort"
+    $env:HTTPS_PROXY = "http://127.0.0.1:$proxyPort"
+    $env:ALL_PROXY = "socks5://127.0.0.1:$proxyPort"
+}
 $env:USERPROFILE = $sandboxDir
 $env:HOME = $sandboxDir
 $env:CLAUDE_CONFIG_DIR = $sandboxDir
@@ -192,7 +222,7 @@ if (-not $claudeCmd) {
     exit 1
 }
 
-# 6. Запуск Claude Code внутри диска X:
+# 6. Запуск Claude Code внутри смонтированного диска
 if ($isAdmin) {
     Write-Host "[5/5] Запуск Claude Code в режиме Администратора..." -ForegroundColor Yellow
 } else {
@@ -200,7 +230,7 @@ if ($isAdmin) {
 }
 Write-Host "--------------------------------------------------------" -ForegroundColor DarkGray
 
-Set-Location "X:\"
+Set-Location "$driveLetter\"
 
 $finalArgs = @($args)
 if ($isAdmin) {
@@ -212,11 +242,14 @@ if ($isAdmin) {
 # Запуск скрытого независимого сторожа (Watchdog)
 $watchdogPath = Join-Path $PSScriptRoot "claude-watchdog.ps1"
 if (Test-Path $watchdogPath) {
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPath`" -launcherPid $PID" -WindowStyle Hidden
+    $wdArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPath`" -launcherPid $PID"
+    if ($isTunMode) { $wdArgs += " -liveKillSwitch" }
+    Start-Process powershell.exe -ArgumentList $wdArgs -WindowStyle Hidden
 }
 
 try {
     & $claudeCmd $finalArgs
 } finally {
+    Set-Location $currentFolder
     Stop-Process -Name "claude" -Force -ErrorAction SilentlyContinue
 }

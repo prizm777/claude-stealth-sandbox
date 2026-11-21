@@ -41,8 +41,10 @@ function Test-ProxyStatus {
         } catch {}
     }
     
+    $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
+    
     if ($activePort) {
-        Write-Host "  [OK] Локальный Proxy/VPN порт: $activePort (Доступен)" -ForegroundColor Green
+        Write-Host "  [OK] Сетевой режим: Локальный Proxy (Порт $activePort)" -ForegroundColor Green
         try {
             $ipData = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$activePort" -TimeoutSec 4
             $detectedTz = if ($ipData.timezone) { $ipData.timezone } else { "UTC" }
@@ -50,18 +52,33 @@ function Test-ProxyStatus {
             Write-Host "  [OK] Страна выхода: $($ipData.country) ($($ipData.city), $($ipData.region))" -ForegroundColor Green
             Write-Host "  [OK] Часовой пояс выхода: $detectedTz" -ForegroundColor Green
             Write-Host "  [OK] Провайдер: $($ipData.org)" -ForegroundColor Gray
-            $blockedCountries = @("RU", "BY", "IR", "KP", "CU", "SY")
             if ($blockedCountries -contains $ipData.country) {
                 Write-Host "  [!] ВНИМАНИЕ: Прокси вернул IP из заблокированного региона ($($ipData.country))! Claude заблокирует доступ!" -ForegroundColor Red
             } else {
-                Write-Host "  [OK] Kill-Switch статус: БЕЗОПАСНО (Доступ к Claude разрешен, TZ синхронизирована)" -ForegroundColor Green
+                Write-Host "  [OK] Kill-Switch статус: БЕЗОПАСНО (При обрыве прокси трафик не может пойти мимо)" -ForegroundColor Green
             }
         } catch {
             Write-Host "  [-] Ошибка опроса внешнего IP через порт ${activePort}: $_" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "  [-] Proxy/VPN не обнаружен на стандартных портах (10808, 10809, 2080, 7890)!" -ForegroundColor Red
-        Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для предотвращения бана." -ForegroundColor Yellow
+        # Проверка прямого соединения на системный VPN / TUN (Amnezia, Outline, WireGuard)
+        try {
+            $ipData = Invoke-RestMethod -Uri "https://ipinfo.io/json" -TimeoutSec 4 -ErrorAction Stop
+            $detectedTz = if ($ipData.timezone) { $ipData.timezone } else { "UTC" }
+            if ($blockedCountries -contains $ipData.country) {
+                Write-Host "  [-] Proxy не найден, а системный IP из заблокированного региона ($($ipData.country))!" -ForegroundColor Red
+                Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для предотвращения бана." -ForegroundColor Yellow
+            } else {
+                Write-Host "  [OK] Сетевой режим: Системный VPN / TUN (Amnezia, Outline, WireGuard)" -ForegroundColor Green
+                Write-Host "  [OK] Внешний IP: $($ipData.ip)" -ForegroundColor Green
+                Write-Host "  [OK] Страна выхода: $($ipData.country) ($($ipData.city), $($ipData.region))" -ForegroundColor Green
+                Write-Host "  [OK] Часовой пояс выхода: $detectedTz" -ForegroundColor Green
+                Write-Host "  [OK] Kill-Switch статус: БЕЗОПАСНО (Фоновый Watchdog защитит от утечки IP)" -ForegroundColor Green
+            }
+        } catch {
+            Write-Host "  [-] Proxy/VPN не обнаружен (порты закрыты, прямое соединение недоступно)!" -ForegroundColor Red
+            Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для предотвращения бана." -ForegroundColor Yellow
+        }
     }
     Write-Host ""
     Read-Host "  Нажмите Enter для возврата в меню..."
@@ -69,15 +86,19 @@ function Test-ProxyStatus {
 
 function Emergency-Cleanup {
     Write-Host "`n[+] Запуск экстренной очистки процессов и блокировок..." -ForegroundColor Cyan
-    Stop-Process -Name "claude", "chrome-native-host" -Force -ErrorAction SilentlyContinue
-    taskkill /F /IM claude.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
+    Stop-Process -Name "claude", "claude-desktop", "chrome-native-host" -Force -ErrorAction SilentlyContinue
+    taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
     
     $profileDir = Join-Path $PSScriptRoot "data\desktop-profile"
-    if (Test-Path "$profileDir\lockfile") {
-        Remove-Item -Path "$profileDir\lockfile" -Force -ErrorAction SilentlyContinue
+    $lockFiles = @("lockfile", "SingletonLock", "SingletonSocket", "SingletonCookie")
+    foreach ($lf in $lockFiles) {
+        $p = Join-Path $profileDir $lf
+        if (Test-Path $p) {
+            Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
+        }
     }
     Write-Host "  [OK] Все процессы Claude и вспомогательные хосты завершены." -ForegroundColor Green
-    Write-Host "  [OK] Файлы блокировок lockfile удалены." -ForegroundColor Green
+    Write-Host "  [OK] Все файлы блокировок SingletonLock / lockfile удалены." -ForegroundColor Green
     Write-Host "  [OK] Диспетчер задач чист." -ForegroundColor Green
     Write-Host ""
     Read-Host "  Нажмите Enter для возврата в меню..."
