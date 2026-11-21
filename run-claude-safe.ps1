@@ -1,0 +1,191 @@
+﻿# ==============================================================================
+#  Claude Code CLI Secure Sandbox Launcher
+#  Features: Isolated Profile, Hardware Spoofing, Proxy Enforcement & Watchdog
+# ==============================================================================
+$ErrorActionPreference = "Stop"
+
+Write-Host "==============================================" -ForegroundColor Cyan
+Write-Host "   CLAUDE CODE SECURE SANDBOX LAUNCHER" -ForegroundColor Cyan
+Write-Host "==============================================" -ForegroundColor Cyan
+Write-Host ""
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+    Write-Host "[*] РЕЖИМ АДМИНИСТРАТОРА: ВКЛЮЧЕН" -ForegroundColor Yellow
+    Write-Host "    (Claude Code запущен с полными правами Администратора и доступом ко всем консолям)" -ForegroundColor DarkGray
+    Write-Host ""
+} else {
+    Write-Host "[*] Обычный режим (без прав Администратора)." -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# 1. Проверка активности VPN / Proxy
+Write-Host "[1/5] Проверка подключения Proxy/VPN... " -NoNewline
+$proxyPort = $null
+$candidatePorts = @(10808, 10809, 2080, 7890)
+if ($env:CLAUDE_PROXY_PORT) {
+    $candidatePorts = @([int]$env:CLAUDE_PROXY_PORT) + $candidatePorts
+}
+
+foreach ($port in $candidatePorts) {
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $async = $client.BeginConnect("127.0.0.1", $port, $null, $null)
+        if ($async.AsyncWaitHandle.WaitOne(1000, $false)) {
+            $client.EndConnect($async)
+            $client.Close()
+            $proxyPort = $port
+            break
+        }
+        $client.Close()
+    } catch {}
+}
+
+if (-not $proxyPort) {
+    Write-Host "ОШИБКА!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "[-] VPN/Proxy не запущен или локальные порты закрыты!" -ForegroundColor Red
+    Write-Host "[-] Запуск немедленно заблокирован (Kill Switch)!" -ForegroundColor Red
+    Write-Host "[-] Твой реальный IP никуда не ушел. Запусти VPN и повтори." -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Нажмите Enter для выхода..."
+    exit 1
+}
+Write-Host "OK (порт $proxyPort)" -ForegroundColor Green
+
+# 2. Проверка внешнего IP через прокси
+Write-Host "[2/5] Проверка внешнего IP через Proxy... " -NoNewline
+try {
+    $check = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$proxyPort" -TimeoutSec 5
+    if ($check.country -eq "RU") {
+        Write-Host "ОШИБКА!" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из РФ ($($check.ip))!" -ForegroundColor Red
+        Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
+        Write-Host ""
+        Read-Host "Нажмите Enter для выхода..."
+        exit 1
+    }
+    Write-Host "OK ($($check.ip) [$($check.country)])" -ForegroundColor Green
+} catch {
+    Write-Host "ОШИБКА!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "[-] Не удалось связаться с сервером проверки через прокси: $_" -ForegroundColor Red
+    Write-Host "[-] Запуск остановлен для вашей безопасности." -ForegroundColor Red
+    Write-Host ""
+    Read-Host "Нажмите Enter для выхода..."
+    exit 1
+}
+
+# 3. Идемпотентное монтирование виртуального диска X:
+Write-Host "[3/5] Монтирование виртуального диска X:... " -NoNewline
+$driveLetter = "X:"
+$currentFolder = $PSScriptRoot
+
+$substList = & subst
+$mountedToThisFolder = $false
+foreach ($line in $substList) {
+    if ($line -like "$driveLetter\*=>$currentFolder*") {
+        $mountedToThisFolder = $true
+        break
+    }
+}
+
+if (-not $mountedToThisFolder) {
+    if (Test-Path "$driveLetter\") {
+        & subst $driveLetter /D 2>$null | Out-Null
+    }
+    & subst $driveLetter "$currentFolder" | Out-Null
+}
+Write-Host "OK" -ForegroundColor Green
+
+# 4. Настройка изолированной песочницы на диске X:
+Write-Host "[4/5] Изоляция профиля и анонимизация окружения... " -NoNewline
+$sandboxDir = "X:\data\cli-profile"
+if (-not (Test-Path $sandboxDir)) {
+    New-Item -ItemType Directory -Path $sandboxDir -Force | Out-Null
+}
+
+$sandboxConfig = Join-Path $sandboxDir ".claude.json"
+if (-not (Test-Path $sandboxConfig)) {
+    $randomMachineId = [System.Guid]::NewGuid().ToString("N") + [System.Guid]::NewGuid().ToString("N")
+    $randomUserId = [System.Guid]::NewGuid().ToString("N") + [System.Guid]::NewGuid().ToString("N")
+    $fakeConfig = @{
+        firstStartTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+        machineID = $randomMachineId
+        userID = $randomUserId
+        migrationVersion = 15
+    }
+    $fakeConfig | ConvertTo-Json | Set-Content -Path $sandboxConfig -Encoding UTF8
+}
+
+# Подмена системных переменных окружения
+$env:HTTP_PROXY = "http://127.0.0.1:$proxyPort"
+$env:HTTPS_PROXY = "http://127.0.0.1:$proxyPort"
+$env:ALL_PROXY = "socks5://127.0.0.1:$proxyPort"
+$env:USERPROFILE = $sandboxDir
+$env:HOME = $sandboxDir
+$env:CLAUDE_CONFIG_DIR = $sandboxDir
+$env:APPDATA = "$sandboxDir\AppData\Roaming"
+$env:LOCALAPPDATA = "$sandboxDir\AppData\Local"
+$env:TEMP = "$sandboxDir\Temp"
+$env:TMP = "$sandboxDir\Temp"
+$env:USERNAME = "developer"
+$env:USER = "developer"
+$env:COMPUTERNAME = "MacBook-Air"
+$env:TZ = "Europe/Berlin"
+$env:LANG = "en_US.UTF-8"
+
+# Подавление телеметрии Anthropic
+$env:DISABLE_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
+$env:DISABLE_ERROR_REPORTING = "1"
+$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+$env:DISABLE_GROWTHBOOK = "1"
+Write-Host "OK" -ForegroundColor Green
+
+# 5. Поиск команды claude
+$claudeCmd = Get-Command "claude" -CommandType Application, ExternalScript -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+if (-not $claudeCmd) {
+    if (Test-Path "C:\npm-global\claude.cmd") {
+        $claudeCmd = "C:\npm-global\claude.cmd"
+    } elseif (Test-Path "$env:APPDATA\npm\claude.cmd") {
+        $claudeCmd = "$env:APPDATA\npm\claude.cmd"
+    }
+}
+
+if (-not $claudeCmd) {
+    Write-Host "[-] ОШИБКА: Команда 'claude' (Claude Code CLI) не найдена!" -ForegroundColor Red
+    Write-Host "    Установите её через: npm install -g @anthropic-ai/claude-code" -ForegroundColor Yellow
+    Read-Host "Нажмите Enter для выхода..."
+    exit 1
+}
+
+# 6. Запуск Claude Code внутри диска X:
+if ($isAdmin) {
+    Write-Host "[5/5] Запуск Claude Code в режиме Администратора..." -ForegroundColor Yellow
+} else {
+    Write-Host "[5/5] Запуск Claude Code в изолированном режиме..." -ForegroundColor Cyan
+}
+Write-Host "--------------------------------------------------------" -ForegroundColor DarkGray
+
+Set-Location "X:\"
+
+$finalArgs = @($args)
+if ($isAdmin) {
+    if ($finalArgs -notcontains "--dangerously-skip-permissions") {
+        $finalArgs += "--dangerously-skip-permissions"
+    }
+}
+
+# Запуск скрытого независимого сторожа (Watchdog)
+$watchdogPath = Join-Path $PSScriptRoot "claude-watchdog.ps1"
+if (Test-Path $watchdogPath) {
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPath`" -launcherPid $PID" -WindowStyle Hidden
+}
+
+try {
+    & $claudeCmd $finalArgs
+} finally {
+    Stop-Process -Name "claude" -Force -ErrorAction SilentlyContinue
+}

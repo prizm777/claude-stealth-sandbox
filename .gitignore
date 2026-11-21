@@ -1,0 +1,19 @@
+# Data & Profiles
+data/
+.sandbox/
+claude/
+*.lock
+lockfile
+*.log
+
+# Environment & Private Keys
+.env
+*.local
+credentials.json
+settings.json
+config.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
