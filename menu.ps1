@@ -6,7 +6,7 @@ $ErrorActionPreference = "Continue"
 function Show-Header {
     Clear-Host
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "             🛡️  CLAUDE STEALTH SANDBOX FOR WINDOWS  🛡️" -ForegroundColor Cyan
+    Write-Host "               CLAUDE STEALTH SANDBOX FOR WINDOWS" -ForegroundColor Cyan
     Write-Host "      Anti-Ban, WebRTC Hardening, Kill-Switch & Anti-Zombie Watchdog" -ForegroundColor DarkCyan
     Write-Host "======================================================================" -ForegroundColor Cyan
     
@@ -42,16 +42,16 @@ function Test-ProxyStatus {
     }
     
     if ($activePort) {
-        Write-Host "  [✓] Локальный Proxy/VPN порт: $activePort (Доступен)" -ForegroundColor Green
+        Write-Host "  [OK] Локальный Proxy/VPN порт: $activePort (Доступен)" -ForegroundColor Green
         try {
             $ipData = Invoke-RestMethod -Uri "https://ipinfo.io/json" -Proxy "http://127.0.0.1:$activePort" -TimeoutSec 4
-            Write-Host "  [✓] Внешний IP: $($ipData.ip)" -ForegroundColor Green
-            Write-Host "  [✓] Страна выхода: $($ipData.country) ($($ipData.city), $($ipData.region))" -ForegroundColor Green
-            Write-Host "  [✓] Провайдер: $($ipData.org)" -ForegroundColor Gray
+            Write-Host "  [OK] Внешний IP: $($ipData.ip)" -ForegroundColor Green
+            Write-Host "  [OK] Страна выхода: $($ipData.country) ($($ipData.city), $($ipData.region))" -ForegroundColor Green
+            Write-Host "  [OK] Провайдер: $($ipData.org)" -ForegroundColor Gray
             if ($ipData.country -eq "RU") {
                 Write-Host "  [!] ВНИМАНИЕ: Прокси вернул IP из РФ! Claude заблокирует доступ!" -ForegroundColor Red
             } else {
-                Write-Host "  [✓] Kill-Switch статус: БЕЗОПАСНО (Доступ к Claude разрешен)" -ForegroundColor Green
+                Write-Host "  [OK] Kill-Switch статус: БЕЗОПАСНО (Доступ к Claude разрешен)" -ForegroundColor Green
             }
         } catch {
             Write-Host "  [-] Ошибка опроса внешнего IP через порт ${activePort}: $_" -ForegroundColor Yellow
@@ -74,9 +74,9 @@ function Emergency-Cleanup {
     if (Test-Path "$profileDir\lockfile") {
         Remove-Item -Path "$profileDir\lockfile" -Force -ErrorAction SilentlyContinue
     }
-    Write-Host "  [✓] Все процессы Claude и вспомогательные хосты завершены." -ForegroundColor Green
-    Write-Host "  [✓] Файлы блокировок lockfile удалены." -ForegroundColor Green
-    Write-Host "  [✓] Диспетчер задач чист." -ForegroundColor Green
+    Write-Host "  [OK] Все процессы Claude и вспомогательные хосты завершены." -ForegroundColor Green
+    Write-Host "  [OK] Файлы блокировок lockfile удалены." -ForegroundColor Green
+    Write-Host "  [OK] Диспетчер задач чист." -ForegroundColor Green
     Write-Host ""
     Start-Sleep -Seconds 1
 }
@@ -105,7 +105,7 @@ function Create-DesktopShortcut {
         }
         $shortcut.Save()
         
-        Write-Host "  [✓] Ярлык успешно создан: $shortcutPath" -ForegroundColor Green
+        Write-Host "  [OK] Ярлык успешно создан: $shortcutPath" -ForegroundColor Green
     } catch {
         Write-Host "  [-] Ошибка при создании ярлыка: $_" -ForegroundColor Red
     }
@@ -115,15 +115,15 @@ function Create-DesktopShortcut {
 
 while ($true) {
     Show-Header
-    Write-Host "  [1] 🚀 Запустить Claude Desktop (Безопасная песочница)" -ForegroundColor White
-    Write-Host "  [2] ⚡ Запустить Claude Desktop от имени Администратора" -ForegroundColor Yellow
-    Write-Host "  [3] 💻 Запустить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
-    Write-Host "  [4] 🌐 Проверить статус Proxy / VPN и Kill-Switch" -ForegroundColor Green
-    Write-Host "  [5] 🧪 Проверить защиту от утечек WebRTC и IP в браузере" -ForegroundColor Magenta
-    Write-Host "  [6] 🧹 Экстренная очистка (выгрузить все процессы и кэш)" -ForegroundColor DarkYellow
-    Write-Host "  [7] 📌 Создать ярлык на Рабочем столе" -ForegroundColor Blue
+    Write-Host "  [1] Запустить Claude Desktop (Безопасная песочница)" -ForegroundColor White
+    Write-Host "  [2] Запустить Claude Desktop от имени Администратора" -ForegroundColor Yellow
+    Write-Host "  [3] Запустить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
+    Write-Host "  [4] Проверить статус Proxy / VPN и Kill-Switch" -ForegroundColor Green
+    Write-Host "  [5] Проверить защиту от утечек WebRTC и IP в браузере" -ForegroundColor Magenta
+    Write-Host "  [6] Экстренная очистка (выгрузить все процессы и кэш)" -ForegroundColor DarkYellow
+    Write-Host "  [7] Создать / обновить ярлык на Рабочем столе" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "  [0] ❌ Выход" -ForegroundColor DarkGray
+    Write-Host "  [0] Выход" -ForegroundColor DarkGray
     Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
     
     $choice = Read-Host "  Выберите действие [0-7]"
