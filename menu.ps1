@@ -107,6 +107,30 @@ function Emergency-Cleanup {
     Read-Host "  Нажмите Enter для возврата в меню..."
 }
 
+function Test-ProfileHasLogin([string]$dir) {
+    if (-not $dir -or -not (Test-Path $dir)) { return $false }
+    $cfgPath = Join-Path $dir "config.json"
+    if (Test-Path $cfgPath) {
+        try {
+            $raw = Get-Content -Path $cfgPath -Raw -ErrorAction SilentlyContinue
+            if ($raw -and ($raw.Contains('"oauth:tokenCache"') -or $raw.Contains('"oauth:tokenCacheV2"'))) {
+                return $true
+            }
+        } catch {}
+    }
+    $cPath = Join-Path $dir "Network\Cookies"
+    if (Test-Path $cPath) {
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($cPath)
+            $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+            if ($text.Contains("sessionKey")) {
+                return $true
+            }
+        } catch {}
+    }
+    return $false
+}
+
 function Manage-SessionVault {
     Write-Host "`n======================================================================" -ForegroundColor Cyan
     Write-Host "             СЕЙФ СЕССИЙ CLAUDE (UNIVERSAL SESSION VAULT)" -ForegroundColor Cyan
@@ -117,9 +141,9 @@ function Manage-SessionVault {
     $localDesktop = Join-Path $PSScriptRoot "data\desktop-profile"
     $localCli = Join-Path $PSScriptRoot "data\cli-profile"
     
-    $hasVaultDesktop = Test-Path "$vaultDesktop\Network\Cookies"
+    $hasVaultDesktop = Test-ProfileHasLogin $vaultDesktop
     $hasVaultCli = Test-Path "$vaultCli\.claude\projects"
-    $hasLocalDesktop = Test-Path "$localDesktop\Network\Cookies"
+    $hasLocalDesktop = Test-ProfileHasLogin $localDesktop
     $hasLocalCli = Test-Path "$localCli\.claude\projects"
     
     Write-Host " [*] Статус системного Сейфа ($vaultDir):" -ForegroundColor Gray
@@ -149,6 +173,8 @@ function Manage-SessionVault {
                 if (Test-Path $src) { Copy-Item -Path $src -Destination $vaultDesktop -Recurse -Force -ErrorAction SilentlyContinue }
             }
             Write-Host "  [OK] Сессия Claude Desktop успешно сохранена в Сейф!" -ForegroundColor Green
+        } else {
+            Write-Host "  [-] В текущей папке нет авторизованной сессии Desktop для сохранения!" -ForegroundColor Yellow
         }
         if ($hasLocalCli) {
             if (-not (Test-Path "$vaultCli\.claude")) { New-Item -ItemType Directory -Path "$vaultCli\.claude" -Force | Out-Null }
@@ -165,6 +191,8 @@ function Manage-SessionVault {
                 if (Test-Path $src) { Copy-Item -Path $src -Destination $localDesktop -Recurse -Force -ErrorAction SilentlyContinue }
             }
             Write-Host "  [OK] Сессия Claude Desktop восстановлена в песочницу!" -ForegroundColor Green
+        } else {
+            Write-Host "  [-] В Сейфе нет сохранённой сессии Desktop!" -ForegroundColor Yellow
         }
         if ($hasVaultCli) {
             if (-not (Test-Path "$localCli\.claude")) { New-Item -ItemType Directory -Path "$localCli\.claude" -Force | Out-Null }
@@ -350,9 +378,9 @@ function Install-ClaudeDesktopWithIsolation {
     Write-Host "  [OK] Профиль песочницы сконфигурирован (спуфинг: MacBook-Air, en-US)." -ForegroundColor Green
     
     # 4.5. Smart Detection: предложение перенести существующую авторизацию Windows
-    $hasSandboxLogin = Test-Path "$profileDir\Network\Cookies"
+    $hasSandboxLogin = Test-ProfileHasLogin $profileDir
     $hostClaudeData = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_pzs8sxrjxfjjc"
-    if (-not $hasSandboxLogin -and (Test-Path "$hostClaudeData\Network\Cookies")) {
+    if (-not $hasSandboxLogin -and (Test-ProfileHasLogin $hostClaudeData)) {
         Write-Host "  [*] Обнаружен существующий залогиненный аккаунт в Windows." -ForegroundColor Yellow
         $importAns = Read-Host "      Скопировать авторизацию в песочницу, чтобы не входить заново? [Y/n] (Enter = Да)"
         if ($importAns -eq "" -or $importAns -match "^[yYдД]") {

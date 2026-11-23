@@ -107,6 +107,30 @@ if (-not (Test-Path $regPath)) {
 Set-ItemProperty -Path $regPath -Name "Disabled" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 Set-ItemProperty -Path $regPath -Name "DisabledByUser" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
+function Test-ProfileHasLogin([string]$dir) {
+    if (-not $dir -or -not (Test-Path $dir)) { return $false }
+    $cfgPath = Join-Path $dir "config.json"
+    if (Test-Path $cfgPath) {
+        try {
+            $raw = Get-Content -Path $cfgPath -Raw -ErrorAction SilentlyContinue
+            if ($raw -and ($raw.Contains('"oauth:tokenCache"') -or $raw.Contains('"oauth:tokenCacheV2"'))) {
+                return $true
+            }
+        } catch {}
+    }
+    $cPath = Join-Path $dir "Network\Cookies"
+    if (Test-Path $cPath) {
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($cPath)
+            $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+            if ($text.Contains("sessionKey")) {
+                return $true
+            }
+        } catch {}
+    }
+    return $false
+}
+
 # Universal Session Vault & Smart Detection
 $profileDir = Join-Path $PSScriptRoot "data\desktop-profile"
 if (-not (Test-Path $profileDir)) {
@@ -116,8 +140,8 @@ if (-not (Test-Path $profileDir)) {
 $vaultDir = Join-Path $env:USERPROFILE ".claude-sandbox-vault\desktop-profile"
 $itemsToSync = @("Local State", "Network", "Local Storage", "Session Storage", "IndexedDB", "WebStorage", "ant-did", "Preferences", "config.json", "claude_desktop_config.json")
 
-$hasLocalLogin = Test-Path "$profileDir\Network\Cookies"
-$hasVaultLogin = Test-Path "$vaultDir\Network\Cookies"
+$hasLocalLogin = Test-ProfileHasLogin $profileDir
+$hasVaultLogin = Test-ProfileHasLogin $vaultDir
 
 if (-not $hasLocalLogin -and $hasVaultLogin) {
     Write-Host "  [*] ОБНАРУЖЕНА АКТИВНАЯ АВТОРИЗАЦИЯ В СЕЙФЕ СЕССИЙ (SESSION VAULT)!" -ForegroundColor Green
@@ -129,20 +153,22 @@ if (-not $hasLocalLogin -and $hasVaultLogin) {
         }
     }
     Write-Host "OK!" -ForegroundColor Green
-    $hasLocalLogin = Test-Path "$profileDir\Network\Cookies"
+    $hasLocalLogin = Test-ProfileHasLogin $profileDir
 }
 
 if (-not $hasLocalLogin) {
     # Поиск сессии в альтернативных песочницах и Windows
     $potentialSources = @(
         "D:\claude-secure-sandbox\data\desktop-profile",
+        "C:\Users\тимоха\Desktop\новичок\claude-stealth-sandbox-v1.4.0\data\desktop-profile",
+        "C:\Users\тимоха\Desktop\новичок\claude-stealth-sandbox-v1.6.0\data\desktop-profile",
         (Join-Path $env:LOCALAPPDATA "AnthropicClaude"),
         (Join-Path $env:LOCALAPPDATA "Claude"),
         (Join-Path $env:LOCALAPPDATA "Claude-Data\claude_pzs8sxrjxfjjc")
     )
     $foundSource = $null
     foreach ($ps in $potentialSources) {
-        if ((Test-Path "$ps\Network\Cookies") -and ($ps -ne $profileDir)) {
+        if ((Test-ProfileHasLogin $ps) -and ($ps -ne $profileDir)) {
             $foundSource = $ps
             break
         }
@@ -154,29 +180,23 @@ if (-not $hasLocalLogin) {
         Write-Host " [*] ОБНАРУЖЕН СУЩЕСТВУЮЩИЙ АККАУНТ CLAUDE DESKTOP!" -ForegroundColor Yellow
         Write-Host "==========================================================" -ForegroundColor Yellow
         Write-Host "  Найдена сохранённая авторизация: $foundSource" -ForegroundColor DarkGray
-        Write-Host "  Хотите скопировать сессию в песочницу и Сейф?" -ForegroundColor Gray
-        $importChoice = Read-Host "  Импортировать сессию? [Y/n] (Enter = Да)"
-        if ($importChoice -eq "" -or $importChoice -match "^[yYдД]") {
-            Write-Host "  [*] Клонирование авторизации и истории в песочницу... " -NoNewline -ForegroundColor Cyan
-            foreach ($item in $itemsToSync) {
-                $srcItem = Join-Path $foundSource $item
-                if (Test-Path $srcItem) {
-                    Copy-Item -Path $srcItem -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
-                }
+        Write-Host "  Клонирование сессии в песочницу и Сейф... " -NoNewline -ForegroundColor Cyan
+        foreach ($item in $itemsToSync) {
+            $srcItem = Join-Path $foundSource $item
+            if (Test-Path $srcItem) {
+                Copy-Item -Path $srcItem -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
             }
-            # Зеркалируем в Universal Vault
-            if (-not (Test-Path $vaultDir)) { New-Item -ItemType Directory -Path $vaultDir -Force | Out-Null }
-            foreach ($item in $itemsToSync) {
-                $srcItem = Join-Path $profileDir $item
-                if (Test-Path $srcItem) {
-                    Copy-Item -Path $srcItem -Destination $vaultDir -Recurse -Force -ErrorAction SilentlyContinue
-                }
-            }
-            Write-Host "OK!" -ForegroundColor Green
-            Write-Host "  [OK] Сессия перенесена! Вы будете сразу залогинены в своем аккаунте." -ForegroundColor Green
-        } else {
-            Write-Host "  [*] Запуск с чистого профиля (потребуется отдельный вход)." -ForegroundColor DarkGray
         }
+        # Зеркалируем в Universal Vault
+        if (-not (Test-Path $vaultDir)) { New-Item -ItemType Directory -Path $vaultDir -Force | Out-Null }
+        foreach ($item in $itemsToSync) {
+            $srcItem = Join-Path $profileDir $item
+            if (Test-Path $srcItem) {
+                Copy-Item -Path $srcItem -Destination $vaultDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Write-Host "OK!" -ForegroundColor Green
+        Write-Host "  [OK] Сессия перенесена! Вы будете сразу залогинены в своем аккаунте." -ForegroundColor Green
         Write-Host ""
     }
 }
@@ -342,8 +362,8 @@ try {
             Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
         }
     }
-    # Зеркалирование свежей рабочей сессии в Universal Session Vault
-    if (Test-Path "$profileDir\Network\Cookies") {
+    # Зеркалирование свежей рабочей сессии в Universal Session Vault (ТОЛЬКО если профиль авторизован!)
+    if (Test-ProfileHasLogin $profileDir) {
         if (-not (Test-Path $vaultDir)) { New-Item -ItemType Directory -Path $vaultDir -Force | Out-Null }
         foreach ($item in $itemsToSync) {
             $src = Join-Path $profileDir $item
