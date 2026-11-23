@@ -487,6 +487,132 @@ function Install-ClaudeCodeWithIsolation {
     Read-Host "  Нажмите Enter для возврата в меню..."
 }
 
+function Start-OnboardingWizard {
+    Clear-Host
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "             CLAUDE STEALTH SANDBOX FOR WINDOWS (v1.6.0)" -ForegroundColor Cyan
+    Write-Host "          Интерактивный мастер первого запуска (Quick Start)" -ForegroundColor Yellow
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Привет! Ты запускаешь песочницу впервые или уже пользовался?" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [1] Я новичок (Быстрый интерактивный гид + автонастройка за 1 мин)" -ForegroundColor Green
+    Write-Host "  [2] Я опытный / Всё знаю (Сразу перейти в Главное Меню)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
+    $initChoice = Read-Host "  Выберите вариант [1-2] (Enter = 1): "
+    
+    $markerDir = Join-Path $PSScriptRoot "data"
+    if (-not (Test-Path $markerDir)) { New-Item -ItemType Directory -Path $markerDir -Force | Out-Null }
+    $markerFile = Join-Path $markerDir ".onboarded"
+    
+    if ($initChoice.Trim() -eq "2") {
+        Set-Content -Path $markerFile -Value "completed" -Force
+        return
+    }
+    
+    # --- ШАГ 1: Суть на пальцах ---
+    Clear-Host
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "  [ШАГ 1/4] ЧТО ТАКОЕ CLAUDE STEALTH SANDBOX?" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Эта песочница создана, чтобы ты мог безопасно пользоваться Claude" -ForegroundColor White
+    Write-Host "  на Windows и защитить свой аккаунт от блокировок Anthropic:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  * Аппаратная растяжка (Socket Tripwire):" -NoNewline -ForegroundColor Yellow
+    Write-Host " перехватывает утечки IP за 0.2 мс." -ForegroundColor Gray
+    Write-Host "  * Полная изоляция профиля:" -NoNewline -ForegroundColor Yellow
+    Write-Host " подменяет имя твоего ПК на MacBook-Air." -ForegroundColor Gray
+    Write-Host "  * DoH Cloudflare Shield:" -NoNewline -ForegroundColor Yellow
+    Write-Host " шифрует DNS, провайдер не видит запросы." -ForegroundColor Gray
+    Write-Host "  * Сейф сессий (Session Vault):" -NoNewline -ForegroundColor Yellow
+    Write-Host " сохраняет вход навсегда даже при апдейтах." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
+    Read-Host "  Нажмите Enter, чтобы перейти к следующему шагу..."
+    
+    # --- ШАГ 2: Проверка наличия Claude Desktop ---
+    Clear-Host
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "  [ШАГ 2/4] ПРОВЕРКА ПРИЛОЖЕНИЯ CLAUDE DESKTOP" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    
+    $candidatePaths = @(
+        (Join-Path $env:LOCALAPPDATA "AnthropicClaude\claude.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Claude\Claude.exe"),
+        (Join-Path $env:PROGRAMFILES "Claude\Claude.exe"),
+        (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe")
+    )
+    $hasClaude = $false
+    foreach ($cp in $candidatePaths) {
+        if (Test-Path $cp) { $hasClaude = $true; break }
+    }
+    if (-not $hasClaude) {
+        $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($pkg -and (Test-Path (Join-Path $pkg.InstallLocation "app\claude.exe"))) { $hasClaude = $true }
+    }
+    
+    if ($hasClaude) {
+        Write-Host "  [OK] Отлично! Официальное приложение Claude Desktop уже установлено." -ForegroundColor Green
+        Write-Host "       Песочница автоматически подключит к нему защитный контур." -ForegroundColor Gray
+    } else {
+        Write-Host "  [-] Claude Desktop пока НЕ установлен на твоём компьютере!" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  [*] Ты можешь установить его прямо отсюда в один клик!" -ForegroundColor Cyan
+        Write-Host "      Песочница сама скачает официальный дистрибутив и настроит изоляцию." -ForegroundColor Gray
+        Write-Host ""
+        $installAns = Read-Host "  Установить Claude Desktop сейчас? [Y/n] (Enter = Да): "
+        if ($installAns -eq "" -or $installAns -match "^[yYдД]") {
+            Install-ClaudeDesktopWithIsolation
+        }
+    }
+    Write-Host ""
+    Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
+    Read-Host "  Нажмите Enter, чтобы продолжить..."
+    
+    # --- ШАГ 3: Золотое правило безопасности ---
+    Clear-Host
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "  [ШАГ 3/4] ЗОЛОТОЕ ПРАВИЛО БЕЗОПАСНОСТИ СЕТИ" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  [!] САМОЕ ГЛАВНОЕ ПРАВИЛО:" -ForegroundColor Red
+    Write-Host "      Всегда включай зарубежный VPN или Proxy ДО нажатия кнопки «Запустить»!" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  * Подходят любые VPN: Amnezia, Outline, WireGuard, OpenVPN" -ForegroundColor White
+    Write-Host "  * Подходят любые Proxy: Happ, V2RayN, Nekoray, Clash, Sing-box" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [i] Страховка Kill-Switch:" -ForegroundColor Green
+    Write-Host "      Если VPN или Proxy внезапно отрубится во время работы — песочница" -ForegroundColor Gray
+    Write-Host "      заблокирует интернет в Claude или мгновенно завершит процесс." -ForegroundColor Gray
+    Write-Host "      Твой реальный IP физически не утечёт!" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
+    Read-Host "  Нажмите Enter, чтобы перейти к проверке сети..."
+    
+    # --- ШАГ 4: Экспресс-чек сети ---
+    Clear-Host
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "  [ШАГ 4/4] ЭКСПРЕСС-ПРОВЕРКА ГОТОВНОСТИ ТВОЕЙ СЕТИ" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Давай прямо сейчас проверим, готов ли твой интернет к работе:" -ForegroundColor White
+    Test-ProxyStatus
+    
+    # Финал
+    Set-Content -Path $markerFile -Value "completed" -Force
+    Write-Host ""
+    Write-Host "======================================================================" -ForegroundColor Green
+    Write-Host "  [OK] ПОЗДРАВЛЯЕМ! ОБУЧЕНИЕ УСПЕШНО ПРОЙДЕНО!" -ForegroundColor Green
+    Write-Host "======================================================================" -ForegroundColor Green
+    Write-Host "  Теперь ты знаешь всё необходимое для безопасной работы с Claude." -ForegroundColor White
+    Write-Host "  При последующих запусках будет сразу открываться главное меню." -ForegroundColor Gray
+    Write-Host ""
+    Read-Host "  Нажмите Enter для перехода в Главное Меню..."
+}
+
 function Show-ToolsMenu {
     while ($true) {
         Show-Header
@@ -497,11 +623,12 @@ function Show-ToolsMenu {
         Write-Host "  [3] Создать / обновить ярлык на Рабочем столе" -ForegroundColor Blue
         Write-Host "  [4] Установить Claude Desktop (сразу с изоляцией)" -ForegroundColor Green
         Write-Host "  [5] Установить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
+        Write-Host "  [6] Пройти интерактивный гид для новичков заново" -ForegroundColor Magenta
         Write-Host ""
         Write-Host "  [0] Назад в главное меню" -ForegroundColor DarkGray
         Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
         
-        $subChoice = Read-Host "  Выберите действие [0-5]: "
+        $subChoice = Read-Host "  Выберите действие [0-6]: "
         switch ($subChoice.Trim()) {
             "1" {
                 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -524,6 +651,9 @@ function Show-ToolsMenu {
             "5" {
                 Install-ClaudeCodeWithIsolation
             }
+            "6" {
+                Start-OnboardingWizard
+            }
             "0" {
                 return
             }
@@ -533,6 +663,12 @@ function Show-ToolsMenu {
             }
         }
     }
+}
+
+# Проверка онбординга для первого запуска
+$markerFile = Join-Path $PSScriptRoot "data\.onboarded"
+if (-not (Test-Path $markerFile)) {
+    Start-OnboardingWizard
 }
 
 while ($true) {
