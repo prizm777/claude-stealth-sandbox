@@ -17,7 +17,7 @@
 > [!WARNING]
 > **Статус проекта: Публичное тестирование (Community Beta ~50/50)**
 > Эта версия песочницы только что вышла и активно тестируется в боевых условиях. Из-за огромного разнообразия версий Windows 10/11, VPN-протоколов (Amnezia, Outline, WireGuard, V2Ray, Clash, Happ) и провайдеров возможны непредвиденные системные баги или шероховатости.
-> Если вы наткнулись на ошибку, вылет или странное поведение — пожалуйста, **[создайте Issue на GitHub](https://github.com/timofejmihee1-cpu/claude-stealth-sandbox/issues)**, и мы оперативно выпустим фикс!
+> Если вы наткнулись на ошибку, вылет или странное поведение — пожалуйста, **[создайте Issue на GitHub](https://github.com/prizm777/claude-stealth-sandbox/issues)**, и мы оперативно выпустим фикс!
 
 ---
 
@@ -81,9 +81,9 @@
 
 ### Быстрый старт:
 
-1. Скачайте архив со страницы [Releases](https://github.com/timofejmihee1-cpu/claude-stealth-sandbox/releases) или склонируйте репозиторий:
+1. Скачайте архив со страницы [Releases](https://github.com/prizm777/claude-stealth-sandbox/releases) или склонируйте репозиторий:
    ```bash
-   git clone https://github.com/timofejmihee1-cpu/claude-stealth-sandbox.git
+   git clone https://github.com/prizm777/claude-stealth-sandbox.git
    cd claude-stealth-sandbox
    ```
 2. Включите ваш VPN (Amnezia, Outline, WireGuard) или Proxy (Happ, Xray, Nekoray) с зарубежным сервером.
@@ -104,7 +104,7 @@
 > [!WARNING]
 > **Project Status: Public Community Beta (~50/50 Testing)**
 > This is a newly released version under active real-world community testing. Due to the wide diversity of Windows 10/11 builds, VPN/proxy stacks (Amnezia, Outline, WireGuard, V2Ray, Clash, Sing-box), and ISP routing, unexpected edge-case bugs may occur.
-> If you encounter any bugs, crashes, or glitches, please **[open an Issue on GitHub](https://github.com/timofejmihee1-cpu/claude-stealth-sandbox/issues)** so we can patch it immediately!
+> If you encounter any bugs, crashes, or glitches, please **[open an Issue on GitHub](https://github.com/prizm777/claude-stealth-sandbox/issues)** so we can patch it immediately!
 
 ### Key Features:
 
