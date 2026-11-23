@@ -6,7 +6,7 @@ $ErrorActionPreference = "Continue"
 function Show-Header {
     Clear-Host
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "               CLAUDE STEALTH SANDBOX FOR WINDOWS" -ForegroundColor Cyan
+    Write-Host "            CLAUDE STEALTH SANDBOX FOR WINDOWS (v1.6.0)" -ForegroundColor Cyan
     Write-Host "       WebRTC Hardening, Kill-Switch & Anti-Zombie Watchdog" -ForegroundColor DarkCyan
     Write-Host "======================================================================" -ForegroundColor Cyan
     
