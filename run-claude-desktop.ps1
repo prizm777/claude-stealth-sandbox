@@ -54,7 +54,7 @@ if ($proxyPort) {
             Write-Host "ОШИБКА!" -ForegroundColor Red
             Write-Host ""
             Write-Host "[-] КРИТИЧЕСКАЯ ОШИБКА: Прокси вернул IP из заблокированного региона ($($check.ip) [$($check.country)])!" -ForegroundColor Red
-            Write-Host "[-] Запуск отменен для защиты аккаунта от бана." -ForegroundColor Red
+            Write-Host "[-] Запуск отменен для страховки от утечки реального IP." -ForegroundColor Red
             Write-Host ""
             Read-Host "Нажмите Enter для выхода..."
             exit 1

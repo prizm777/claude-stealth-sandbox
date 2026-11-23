@@ -67,7 +67,7 @@ function Test-ProxyStatus {
             $detectedTz = if ($ipData.timezone) { $ipData.timezone } else { "UTC" }
             if ($blockedCountries -contains $ipData.country) {
                 Write-Host "  [-] Proxy не найден, а системный IP из заблокированного региона ($($ipData.country))!" -ForegroundColor Red
-                Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для предотвращения бана." -ForegroundColor Yellow
+                Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для страховки от утечки IP." -ForegroundColor Yellow
             } else {
                 Write-Host "  [OK] Сетевой режим: Системный VPN / TUN (Amnezia, Outline, WireGuard)" -ForegroundColor Green
                 Write-Host "  [OK] Внешний IP: $($ipData.ip)" -ForegroundColor Green
@@ -77,7 +77,7 @@ function Test-ProxyStatus {
             }
         } catch {
             Write-Host "  [-] Proxy/VPN не обнаружен (порты закрыты, прямое соединение недоступно)!" -ForegroundColor Red
-            Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для предотвращения бана." -ForegroundColor Yellow
+            Write-Host "  [!] Kill-Switch: Запуск Claude будет заблокирован для страховки от утечки IP." -ForegroundColor Yellow
         }
     }
     Write-Host ""
@@ -184,7 +184,7 @@ function Create-DesktopShortcut ([switch]$NoWait) {
         $shortcut = $wsh.CreateShortcut($shortcutPath)
         $shortcut.TargetPath = $targetBat
         $shortcut.WorkingDirectory = $PSScriptRoot
-        $shortcut.Description = "Запуск Claude в безопасной песочнице с защитой от бана"
+        $shortcut.Description = "Запуск Claude в изолированной песочнице со страховкой от утечек IP"
         
         if (Test-Path "$PSScriptRoot\icon.ico") {
             $shortcut.IconLocation = "$PSScriptRoot\icon.ico,0"
