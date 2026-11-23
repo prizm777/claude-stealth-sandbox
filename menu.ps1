@@ -81,7 +81,10 @@ function Test-ProxyStatus {
         }
     }
     Write-Host ""
-    Read-Host "  Нажмите Enter для возврата в меню..."
+    $openWeb = Read-Host "  Открыть онлайн-тест утечек WebRTC / DNS в браузере? [y/N] (Enter = Нет)"
+    if ($openWeb -match "^[yYдД]") {
+        & (Join-Path $PSScriptRoot "test-browser-leaks.bat")
+    }
 }
 
 function Emergency-Cleanup {
@@ -484,60 +487,82 @@ function Install-ClaudeCodeWithIsolation {
     Read-Host "  Нажмите Enter для возврата в меню..."
 }
 
+function Show-ToolsMenu {
+    while ($true) {
+        Show-Header
+        Write-Host "                ИНСТРУМЕНТЫ, ЯРЛЫКИ И УСТАНОВКА" -ForegroundColor Cyan
+        Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-Host "  [1] Запустить Claude Desktop от имени Администратора" -ForegroundColor Yellow
+        Write-Host "  [2] Экстренная очистка (выгрузить все процессы и кэш)" -ForegroundColor DarkYellow
+        Write-Host "  [3] Создать / обновить ярлык на Рабочем столе" -ForegroundColor Blue
+        Write-Host "  [4] Установить Claude Desktop (сразу с изоляцией)" -ForegroundColor Green
+        Write-Host "  [5] Установить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "  [0] Назад в главное меню" -ForegroundColor DarkGray
+        Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
+        
+        $subChoice = Read-Host "  Выберите действие [0-5]: "
+        switch ($subChoice.Trim()) {
+            "1" {
+                $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+                if ($isAdmin) {
+                    & (Join-Path $PSScriptRoot "run-claude-desktop.ps1")
+                } else {
+                    Write-Host "`n[*] Запрос прав администратора (UAC)..." -ForegroundColor Yellow
+                    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\run-claude-desktop.ps1`"" -Verb RunAs
+                }
+            }
+            "2" {
+                Emergency-Cleanup
+            }
+            "3" {
+                Create-DesktopShortcut
+            }
+            "4" {
+                Install-ClaudeDesktopWithIsolation
+            }
+            "5" {
+                Install-ClaudeCodeWithIsolation
+            }
+            "0" {
+                return
+            }
+            default {
+                Write-Host "Неверный выбор. Попробуйте снова." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    }
+}
+
 while ($true) {
     Show-Header
     Write-Host "  [1] Запустить Claude Desktop (Безопасная песочница)" -ForegroundColor White
-    Write-Host "  [2] Запустить Claude Desktop от имени Администратора" -ForegroundColor Yellow
-    Write-Host "  [3] Запустить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
-    Write-Host "  [4] Проверить статус Proxy / VPN и Kill-Switch" -ForegroundColor Green
-    Write-Host "  [5] Проверить защиту от утечек WebRTC и IP в браузере" -ForegroundColor Magenta
-    Write-Host "  [6] Экстренная очистка (выгрузить все процессы и кэш)" -ForegroundColor DarkYellow
-    Write-Host "  [7] Сейф сессий (Session Vault): бэкап и быстрое восстановление" -ForegroundColor Cyan
-    Write-Host "  [8] Создать / обновить ярлык на Рабочем столе" -ForegroundColor Blue
-    Write-Host "  [9] Установить Claude Desktop (сразу с изоляцией)" -ForegroundColor Green
-    Write-Host "  [10] Установить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
+    Write-Host "  [2] Запустить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
+    Write-Host "  [3] Диагностика сети и проверка утечек (IP, WebRTC, DNS)" -ForegroundColor Green
+    Write-Host "  [4] Сейф сессий (Universal Session Vault): бэкап и вход" -ForegroundColor Magenta
+    Write-Host "  [5] Инструменты, ярлыки и установка" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  [0] Выход" -ForegroundColor DarkGray
     Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
     
-    $choice = Read-Host "  Выберите действие [0-10]: "
+    $choice = Read-Host "  Выберите действие [0-5]: "
     
     switch ($choice.Trim()) {
         "1" {
             & (Join-Path $PSScriptRoot "run-claude-desktop.ps1")
         }
         "2" {
-            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            if ($isAdmin) {
-                & (Join-Path $PSScriptRoot "run-claude-desktop.ps1")
-            } else {
-                Write-Host "`n[*] Запрос прав администратора (UAC)..." -ForegroundColor Yellow
-                Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\run-claude-desktop.ps1`"" -Verb RunAs
-            }
-        }
-        "3" {
             & (Join-Path $PSScriptRoot "run-claude-safe.ps1")
         }
-        "4" {
+        "3" {
             Test-ProxyStatus
         }
-        "5" {
-            & (Join-Path $PSScriptRoot "test-browser-leaks.bat")
-        }
-        "6" {
-            Emergency-Cleanup
-        }
-        "7" {
+        "4" {
             Manage-SessionVault
         }
-        "8" {
-            Create-DesktopShortcut
-        }
-        "9" {
-            Install-ClaudeDesktopWithIsolation
-        }
-        "10" {
-            Install-ClaudeCodeWithIsolation
+        "5" {
+            Show-ToolsMenu
         }
         "0" {
             Write-Host "`nДо свидания!" -ForegroundColor Gray
