@@ -269,6 +269,7 @@ $watchdogPath = Join-Path $PSScriptRoot "claude-watchdog.ps1"
 if (Test-Path $watchdogPath) {
     $wdArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPath`" -launcherPid $PID"
     if ($isTunMode) { $wdArgs += " -liveKillSwitch" }
+    else { $wdArgs += " -tripwire" }
     Start-Process powershell.exe -ArgumentList $wdArgs -WindowStyle Hidden
 }
 
