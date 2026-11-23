@@ -44,7 +44,7 @@ public class NetTripwire {
                 int rowSize = 24; // MIB_TCPROW_OWNER_PID
                 for (int i = 0; i < rowCount; i++) {
                     IntPtr current = (IntPtr)((long)rowPtr + (i * rowSize));
-                    uint remoteAddr = (uint)Marshal.ReadInt32(current, 8);
+                    uint remoteAddr = (uint)Marshal.ReadInt32(current, 12);
                     int pid = Marshal.ReadInt32(current, 20);
                     if (targetPids.Contains(pid)) {
                         // Check if remote is not 127.x.x.x (loopback) and not 0.0.0.0
