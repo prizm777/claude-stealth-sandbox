@@ -182,8 +182,29 @@ Write-Host "OK" -ForegroundColor Green
 # 4. Поиск бинарника Claude Desktop
 Write-Host "[4/4] Запуск Claude Desktop (Secure Sandbox)..." -ForegroundColor Cyan
 
-$aliasExe = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe"
-if (-not (Test-Path $aliasExe)) {
+$candidatePaths = @(
+    (Join-Path $env:LOCALAPPDATA "AnthropicClaude\claude.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Claude\Claude.exe"),
+    (Join-Path $env:PROGRAMFILES "Claude\Claude.exe"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe")
+)
+
+$aliasExe = $null
+foreach ($cp in $candidatePaths) {
+    if (Test-Path $cp) {
+        $aliasExe = $cp
+        break
+    }
+}
+
+if (-not $aliasExe) {
+    $squirrelApp = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "AnthropicClaude") -Filter "claude.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($squirrelApp) {
+        $aliasExe = $squirrelApp.FullName
+    }
+}
+
+if (-not $aliasExe) {
     $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($pkg -and (Test-Path (Join-Path $pkg.InstallLocation "app\claude.exe"))) {
         $aliasExe = Join-Path $pkg.InstallLocation "app\claude.exe"

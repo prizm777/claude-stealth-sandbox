@@ -140,20 +140,63 @@ function Create-DesktopShortcut ([switch]$NoWait) {
 function Install-ClaudeDesktopWithIsolation {
     Write-Host "`n[+] Проверка и установка Claude Desktop..." -ForegroundColor Cyan
     
-    $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
+    $candidatePaths = @(
+        (Join-Path $env:LOCALAPPDATA "AnthropicClaude\claude.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Claude\Claude.exe"),
+        (Join-Path $env:PROGRAMFILES "Claude\Claude.exe"),
+        (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe")
+    )
     $installed = $false
-    if ($pkg -and (Test-Path "$($pkg.InstallLocation)\app\claude.exe")) {
-        $installed = $true
-        Write-Host "  [OK] Claude Desktop уже установлен: $($pkg.InstallLocation)" -ForegroundColor Green
-    } else {
-        $aliasExe = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\Claude_pzs8sxrjxfjjc\claude-desktop.exe"
-        if (Test-Path $aliasExe) {
+    $detectedPath = $null
+    foreach ($cp in $candidatePaths) {
+        if (Test-Path $cp) {
             $installed = $true
-            Write-Host "  [OK] Claude Desktop обнаружен по пути: $aliasExe" -ForegroundColor Green
+            $detectedPath = $cp
+            break
+        }
+    }
+    if (-not $installed) {
+        $squirrelApp = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "AnthropicClaude") -Filter "claude.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($squirrelApp) {
+            $installed = $true
+            $detectedPath = $squirrelApp.FullName
+        }
+    }
+    if (-not $installed) {
+        $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($pkg -and (Test-Path "$($pkg.InstallLocation)\app\claude.exe")) {
+            $installed = $true
+            $detectedPath = "$($pkg.InstallLocation)\app\claude.exe"
         }
     }
     
-    if (-not $installed) {
+    if ($installed) {
+        Write-Host "  [OK] Claude Desktop уже установлен: $detectedPath" -ForegroundColor Green
+    } else {
+        # Проверка наличия VPN или Proxy перед скачиванием
+        $hasNet = $false
+        $candidatePorts = @(10808, 10809, 2080, 7890)
+        if ($env:CLAUDE_PROXY_PORT) { $candidatePorts = @([int]$env:CLAUDE_PROXY_PORT) + $candidatePorts }
+        foreach ($p in $candidatePorts) {
+            try {
+                $c = New-Object System.Net.Sockets.TcpClient
+                $a = $c.BeginConnect("127.0.0.1", $p, $null, $null)
+                if ($a.AsyncWaitHandle.WaitOne(600, $false)) { $c.EndConnect($a); $c.Close(); $hasNet = $true; break }
+                $c.Close()
+            } catch {}
+        }
+        if (-not $hasNet) {
+            try {
+                $ipCheck = Invoke-RestMethod -Uri "https://ipinfo.io/json" -TimeoutSec 3 -ErrorAction SilentlyContinue
+                if ($ipCheck -and (@("RU", "BY", "IR", "KP", "CU", "SY") -notcontains $ipCheck.country)) { $hasNet = $true }
+            } catch {}
+        }
+        if (-not $hasNet) {
+            Write-Host "  [!] ВНИМАНИЕ: Для скачивания Claude Desktop требуется включенный VPN или Proxy!" -ForegroundColor Yellow
+            Write-Host "      Серверы Anthropic блокируют загрузку из РФ (403 Forbidden)." -ForegroundColor DarkGray
+            Write-Host "      Включите VPN (Amnezia/Outline/WireGuard) или Proxy (Happ/Xray) перед скачиванием." -ForegroundColor DarkGray
+        }
+
         Write-Host "  [*] Скачивание и установка официального приложения Claude Desktop..." -ForegroundColor Yellow
         $hasWinget = Get-Command "winget" -ErrorAction SilentlyContinue
         $installedSuccessfully = $false
@@ -162,24 +205,19 @@ function Install-ClaudeDesktopWithIsolation {
             Write-Host "  [*] Установка через Windows Package Manager (winget)..." -ForegroundColor Gray
             & winget install --id Anthropic.Claude --exact --accept-package-agreements --accept-source-agreements
             Start-Sleep -Seconds 3
-            $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($pkg) { $installedSuccessfully = $true }
+            foreach ($cp in $candidatePaths) {
+                if (Test-Path $cp) { $installedSuccessfully = $true; break }
+            }
+            if (-not $installedSuccessfully) {
+                $pkg = Get-AppxPackage *Claude* -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($pkg) { $installedSuccessfully = $true }
+            }
         }
         
         if (-not $installedSuccessfully) {
-            Write-Host "  [*] Прямое скачивание официального установщика Claude Desktop..." -ForegroundColor Gray
-            $installerUrl = "https://downloads.claude.ai/releases/win32/x64/latest/ClaudeSetup.exe"
-            $tempInstaller = Join-Path $env:TEMP "ClaudeSetup.exe"
-            try {
-                Invoke-WebRequest -Uri $installerUrl -OutFile $tempInstaller -UseBasicParsing
-                Write-Host "  [*] Запуск установщика..." -ForegroundColor Gray
-                $instProc = Start-Process -FilePath $tempInstaller -PassThru
-                $instProc.WaitForExit()
-                Remove-Item $tempInstaller -Force -ErrorAction SilentlyContinue
-                $installedSuccessfully = $true
-            } catch {
-                Write-Host "  [-] Ошибка прямого скачивания: $_" -ForegroundColor Red
-            }
+            Write-Host "  [-] Winget не смог установить Claude Desktop автоматически." -ForegroundColor Yellow
+            Write-Host "      Рекомендуется включить VPN и запустить в консоли:" -ForegroundColor Yellow
+            Write-Host "      winget install Anthropic.Claude" -ForegroundColor Cyan
         }
     }
     
