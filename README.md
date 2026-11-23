@@ -7,12 +7,13 @@
 <a name="русский"></a>
 ## Описание на русском
 
-**Claude Stealth Sandbox** — это готовое окружение и интерактивный хаб для безопасной работы с **Claude Desktop** и **Claude Code (CLI)** на Windows. Sandbox полностью изолирует процессы Claude, защищает аккаунт от геоблокировок Anthropic, поддерживает как локальные Proxy, так и системные VPN (TUN/WireGuard/Outline), динамически синхронизирует часовой пояс, блокирует утечки WebRTC, подменяет фингерпринт устройства, умно импортирует существующие сессии и решает проблему зависания процессов в памяти Windows.
+**Claude Stealth Sandbox** — это готовое окружение и интерактивный хаб для безопасной работы с **Claude Desktop** и **Claude Code (CLI)** на Windows. Sandbox полностью изолирует процессы Claude, защищает аккаунт от геоблокировок Anthropic, поддерживает как локальные Proxy, так и системные VPN (TUN/WireGuard/Outline), динамически синхронизирует часовой пояс, блокирует утечки WebRTC и DNS через шифрованный DNS-over-HTTPS, подменяет фингерпринт устройства, сохраняет бессмертные сессии в защищённый Сейф (Universal Session Vault) и решает проблему зависания процессов в памяти Windows.
 
-![Release](https://img.shields.io/badge/Release-v1.4.0-blue?style=for-the-badge)
+![Release](https://img.shields.io/badge/Release-v1.5.0-blue?style=for-the-badge)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Security](https://img.shields.io/badge/Security-Kill--Switch%20Active-brightgreen?style=for-the-badge)
+![DNS](https://img.shields.io/badge/DNS-DoH%20Shield-purple?style=for-the-badge)
 
 > [!WARNING]
 > **Статус проекта: Публичное тестирование (Community Beta ~50/50)**
@@ -38,13 +39,14 @@
   [4] Проверить статус Proxy / VPN и Kill-Switch
   [5] Проверить защиту от утечек WebRTC и IP в браузере
   [6] Экстренная очистка (выгрузить все процессы и кэш)
-  [7] Создать / обновить ярлык на Рабочем столе
-  [8] Установить Claude Desktop (сразу с изоляцией)
-  [9] Установить Claude Code CLI (Терминал песочницы)
+  [7] Сейф сессий (Session Vault): бэкап и быстрое восстановление
+  [8] Создать / обновить ярлык на Рабочем столе
+  [9] Установить Claude Desktop (сразу с изоляцией)
+  [10] Установить Claude Code CLI (Терминал песочницы)
 
   [0] Выход
 ----------------------------------------------------------------------
-  Выберите действие [0-9]:
+  Выберите действие [0-10]:
 ```
 
 ---
@@ -59,20 +61,23 @@
 2. **Динамическая синхронизация часового пояса (Zero Timezone Mismatch):**
    * Антифрод-системы отслеживают разницу между IP сервера и часами системы (Timezone Mismatch).
    * Sandbox на лету считывает точный часовой пояс сервера выхода (`$check.timezone`, например `Europe/Helsinki`, `America/New_York`, `Europe/Amsterdam`) и выставляет его в `$env:TZ`.
-3. **Smart Detection & 1-Click Migration (Умный перенос профилей):**
-   * Никакой паники от чистого экрана! При первом запуске песочница проверяет, есть ли на компьютере уже авторизованный аккаунт в Windows.
-   * **Claude Desktop:** если найден залогиненный аккаунт в Windows, песочница предлагает в 1 клик (Enter) скопировать авторизацию и куки в защищенную папку `data/desktop-profile`. Вы сразу остаетесь залогинены в своем аккаунте.
-   * **Claude Code CLI:** если в Windows есть существующие проекты и сессии, песочница переносит их, и команда `/resume` сразу видит все ваши диалоги.
-4. **Динамический выбор виртуального диска (No Conflicts):**
+3. **Universal Session Vault (Сейф вечной авторизации & 1-Click Sync):**
+   * Больше никаких сбросов сессий при скачивании обновлений или распаковке песочницы в новые папки!
+   * Рабочие токены и куки зеркалируются в системный Сейф (`~/.claude-sandbox-vault`). При запуске в любой новой папке песочница сама подтягивает вход — вы всегда залогинены!
+   * Пункт меню `[7]` позволяет в один клик делать бэкап и моментально восстанавливать сессию.
+4. **Защита от утечек DNS (DNS-over-HTTPS Cloudflare Shield):**
+   * Даже при хорошем прокси Windows часто сливает DNS-запросы вашему местному провайдеру (Smart Multi-Homed Name Resolution).
+   * Sandbox принудительно включает зашифрованный DoH (`https://chrome.cloudflare-dns.com/dns-query`), пробивая цензуру и гарантируя отсутствие российских DNS-утечек.
+5. **Динамический выбор виртуального диска (No Conflicts):**
    * Вместо жестко зашитого диска `X:`, скрипт проверяет свободные буквы (`X`, `Y`, `Z`, `W`, `V`, `U`, `T`) и никогда не конфликтует с существующими флешками, SSD или сетевыми дисками.
-5. **Защита от утечек WebRTC и телеметрии:**
+6. **Защита от утечек WebRTC и телеметрии:**
    * Принудительно отключает непроксированный UDP в Chromium (`--force-webrtc-ip-handling-policy=disable_non_proxied_udp` для Proxy / `default_public_interface_only` для TUN).
-   * Запрещает сбор телеметрии, краш-дампы и метрики Anthropic (`DISABLE_TELEMETRY=1`, `DO_NOT_TRACK=1`, `DISABLE_GROWTHBOOK=1`, `--disable-breakpad`, `--disable-crash-reporter`).
-6. **Спуфинг окружения и фингерпринта:**
+   * Запрещает сбор телеметрии, краш-дампы и скрытые сетевые опросы (`--disable-sync`, `--no-pings`, `--disable-domain-reliability`, `--disable-client-side-phishing-detection`, `--disable-component-update`, `DISABLE_TELEMETRY=1`, `DO_NOT_TRACK=1`, `DISABLE_GROWTHBOOK=1`).
+7. **Спуфинг окружения и фингерпринта:**
    * Подменяет имя компьютера на `MacBook-Air`, локаль на `en-US`.
    * Генерирует уникальные случайные 64-символьные `machineID` и `userID`.
    * Изолирует данные профиля в папке `data/` — Claude никогда не читает системный `%USERPROFILE%`.
-7. **Решение бага «В режиме паузы» и очистка краш-блокировок:**
+8. **Решение бага «В режиме паузы» и очистка краш-блокировок:**
    * Отключает фоновое зависание в реестре Windows (`BackgroundAccessApplications\Claude_pzs8sxrjxfjjc`).
    * В фоне работает независимый Watchdog-сторож: при закрытии консоли он подчистую выгружает все связанные процессы Claude из памяти (0 висячих процессов в Диспетчере задач).
    * Автоматически подчищает висячие артефакты сбоев Chromium (`SingletonLock`, `SingletonSocket`, `SingletonCookie`, `lockfile`).

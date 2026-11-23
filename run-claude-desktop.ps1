@@ -107,38 +107,78 @@ if (-not (Test-Path $regPath)) {
 Set-ItemProperty -Path $regPath -Name "Disabled" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 Set-ItemProperty -Path $regPath -Name "DisabledByUser" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
+# Universal Session Vault & Smart Detection
 $profileDir = Join-Path $PSScriptRoot "data\desktop-profile"
 if (-not (Test-Path $profileDir)) {
     New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
 }
 
-# Smart Detection: проверка наличия залогиненного профиля в Windows
-$hasExistingSandboxLogin = Test-Path "$profileDir\Network\Cookies"
-$hostClaudeData = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_pzs8sxrjxfjjc"
-if (-not $hasExistingSandboxLogin -and (Test-Path "$hostClaudeData\Network\Cookies")) {
-    Write-Host ""
-    Write-Host "==========================================================" -ForegroundColor Yellow
-    Write-Host " [*] ОБНАРУЖЕН ЗАЛОГИНЕННЫЙ АККАУНТ CLAUDE DESKTOP В WINDOWS!" -ForegroundColor Yellow
-    Write-Host "==========================================================" -ForegroundColor Yellow
-    Write-Host "  Хотите скопировать вашу авторизацию и сессии в песочницу," -ForegroundColor Gray
-    Write-Host "  чтобы остаться залогиненным под защитой Kill-Switch?" -ForegroundColor Gray
-    Write-Host ""
-    $importChoice = Read-Host "  Скопировать авторизацию в песочницу? [Y/n] (Enter = Да)"
-    if ($importChoice -eq "" -or $importChoice -match "^[yYдД]") {
-        Write-Host "  [*] Клонирование авторизации и истории в песочницу... " -NoNewline -ForegroundColor Cyan
-        $itemsToCopy = @("Local State", "Network", "Local Storage", "Session Storage", "IndexedDB", "WebStorage", "ant-did", "Preferences", "config.json")
-        foreach ($item in $itemsToCopy) {
-            $srcItem = Join-Path $hostClaudeData $item
-            if (Test-Path $srcItem) {
-                Copy-Item -Path $srcItem -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
-            }
+$vaultDir = Join-Path $env:USERPROFILE ".claude-sandbox-vault\desktop-profile"
+$itemsToSync = @("Local State", "Network", "Local Storage", "Session Storage", "IndexedDB", "WebStorage", "ant-did", "Preferences", "config.json", "claude_desktop_config.json")
+
+$hasLocalLogin = Test-Path "$profileDir\Network\Cookies"
+$hasVaultLogin = Test-Path "$vaultDir\Network\Cookies"
+
+if (-not $hasLocalLogin -and $hasVaultLogin) {
+    Write-Host "  [*] ОБНАРУЖЕНА АКТИВНАЯ АВТОРИЗАЦИЯ В СЕЙФЕ СЕССИЙ (SESSION VAULT)!" -ForegroundColor Green
+    Write-Host "      Автоматическое восстановление сессии в эту песочницу... " -NoNewline -ForegroundColor Cyan
+    foreach ($item in $itemsToSync) {
+        $src = Join-Path $vaultDir $item
+        if (Test-Path $src) {
+            Copy-Item -Path $src -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        Write-Host "OK!" -ForegroundColor Green
-        Write-Host "  [OK] Сессия перенесена! Вы будете сразу залогинены в своем аккаунте." -ForegroundColor Green
-    } else {
-        Write-Host "  [*] Запуск с чистого профиля (потребуется отдельный вход)." -ForegroundColor DarkGray
     }
-    Write-Host ""
+    Write-Host "OK!" -ForegroundColor Green
+    $hasLocalLogin = Test-Path "$profileDir\Network\Cookies"
+}
+
+if (-not $hasLocalLogin) {
+    # Поиск сессии в альтернативных песочницах и Windows
+    $potentialSources = @(
+        "D:\claude-secure-sandbox\data\desktop-profile",
+        (Join-Path $env:LOCALAPPDATA "AnthropicClaude"),
+        (Join-Path $env:LOCALAPPDATA "Claude"),
+        (Join-Path $env:LOCALAPPDATA "Claude-Data\claude_pzs8sxrjxfjjc")
+    )
+    $foundSource = $null
+    foreach ($ps in $potentialSources) {
+        if ((Test-Path "$ps\Network\Cookies") -and ($ps -ne $profileDir)) {
+            $foundSource = $ps
+            break
+        }
+    }
+    
+    if ($foundSource) {
+        Write-Host ""
+        Write-Host "==========================================================" -ForegroundColor Yellow
+        Write-Host " [*] ОБНАРУЖЕН СУЩЕСТВУЮЩИЙ АККАУНТ CLAUDE DESKTOP!" -ForegroundColor Yellow
+        Write-Host "==========================================================" -ForegroundColor Yellow
+        Write-Host "  Найдена сохранённая авторизация: $foundSource" -ForegroundColor DarkGray
+        Write-Host "  Хотите скопировать сессию в песочницу и Сейф?" -ForegroundColor Gray
+        $importChoice = Read-Host "  Импортировать сессию? [Y/n] (Enter = Да)"
+        if ($importChoice -eq "" -or $importChoice -match "^[yYдД]") {
+            Write-Host "  [*] Клонирование авторизации и истории в песочницу... " -NoNewline -ForegroundColor Cyan
+            foreach ($item in $itemsToSync) {
+                $srcItem = Join-Path $foundSource $item
+                if (Test-Path $srcItem) {
+                    Copy-Item -Path $srcItem -Destination $profileDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            # Зеркалируем в Universal Vault
+            if (-not (Test-Path $vaultDir)) { New-Item -ItemType Directory -Path $vaultDir -Force | Out-Null }
+            foreach ($item in $itemsToSync) {
+                $srcItem = Join-Path $profileDir $item
+                if (Test-Path $srcItem) {
+                    Copy-Item -Path $srcItem -Destination $vaultDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            Write-Host "OK!" -ForegroundColor Green
+            Write-Host "  [OK] Сессия перенесена! Вы будете сразу залогинены в своем аккаунте." -ForegroundColor Green
+        } else {
+            Write-Host "  [*] Запуск с чистого профиля (потребуется отдельный вход)." -ForegroundColor DarkGray
+        }
+        Write-Host ""
+    }
 }
 
 # Снятие блокировок Chromium singleton lock
@@ -223,6 +263,13 @@ $appArgs = @(
     "--lang=en-US",
     "--disable-breakpad",
     "--disable-crash-reporter",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-update",
+    "--disable-domain-reliability",
+    "--disable-sync",
+    "--no-pings",
+    "--enable-features=DnsOverHttps",
+    "--dns-over-https-templates=https://chrome.cloudflare-dns.com/dns-query",
     "--user-data-dir=`"$profileDir`""
 )
 
@@ -292,6 +339,16 @@ try {
         $p = Join-Path $profileDir $lf
         if (Test-Path $p) {
             Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
+        }
+    }
+    # Зеркалирование свежей рабочей сессии в Universal Session Vault
+    if (Test-Path "$profileDir\Network\Cookies") {
+        if (-not (Test-Path $vaultDir)) { New-Item -ItemType Directory -Path $vaultDir -Force | Out-Null }
+        foreach ($item in $itemsToSync) {
+            $src = Join-Path $profileDir $item
+            if (Test-Path $src) {
+                Copy-Item -Path $src -Destination $vaultDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }

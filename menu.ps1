@@ -104,6 +104,75 @@ function Emergency-Cleanup {
     Read-Host "  Нажмите Enter для возврата в меню..."
 }
 
+function Manage-SessionVault {
+    Write-Host "`n======================================================================" -ForegroundColor Cyan
+    Write-Host "             СЕЙФ СЕССИЙ CLAUDE (UNIVERSAL SESSION VAULT)" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    $vaultDir = Join-Path $env:USERPROFILE ".claude-sandbox-vault"
+    $vaultDesktop = Join-Path $vaultDir "desktop-profile"
+    $vaultCli = Join-Path $vaultDir "cli-profile"
+    $localDesktop = Join-Path $PSScriptRoot "data\desktop-profile"
+    $localCli = Join-Path $PSScriptRoot "data\cli-profile"
+    
+    $hasVaultDesktop = Test-Path "$vaultDesktop\Network\Cookies"
+    $hasVaultCli = Test-Path "$vaultCli\.claude\projects"
+    $hasLocalDesktop = Test-Path "$localDesktop\Network\Cookies"
+    $hasLocalCli = Test-Path "$localCli\.claude\projects"
+    
+    Write-Host " [*] Статус системного Сейфа ($vaultDir):" -ForegroundColor Gray
+    Write-Host "     - Claude Desktop в Сейфе: " -NoNewline
+    if ($hasVaultDesktop) { Write-Host "СОХРАНЁН (Активен)" -ForegroundColor Green } else { Write-Host "Пусто" -ForegroundColor DarkGray }
+    Write-Host "     - Claude Code CLI в Сейфе: " -NoNewline
+    if ($hasVaultCli) { Write-Host "СОХРАНЁН (Активен)" -ForegroundColor Green } else { Write-Host "Пусто" -ForegroundColor DarkGray }
+    
+    Write-Host "`n [*] Текущая папка песочницы:" -ForegroundColor Gray
+    Write-Host "     - Локальный Desktop профиль: " -NoNewline
+    if ($hasLocalDesktop) { Write-Host "Авторизован" -ForegroundColor Green } else { Write-Host "Не авторизован" -ForegroundColor Yellow }
+    Write-Host "     - Локальный CLI профиль: " -NoNewline
+    if ($hasLocalCli) { Write-Host "Авторизован" -ForegroundColor Green } else { Write-Host "Не авторизован" -ForegroundColor Yellow }
+    
+    Write-Host "`n  [1] Сохранить текущие рабочие сессии в Сейф (Создать бэкап)" -ForegroundColor Cyan
+    Write-Host "  [2] Восстановить сессии из Сейфа в эту папку (1-клик вход)" -ForegroundColor Green
+    Write-Host "  [0] Назад в главное меню" -ForegroundColor DarkGray
+    
+    $vChoice = Read-Host "`n  Выберите действие [0-2]"
+    $itemsToSync = @("Local State", "Network", "Local Storage", "Session Storage", "IndexedDB", "WebStorage", "ant-did", "Preferences", "config.json", "claude_desktop_config.json")
+    
+    if ($vChoice -eq "1") {
+        if ($hasLocalDesktop) {
+            if (-not (Test-Path $vaultDesktop)) { New-Item -ItemType Directory -Path $vaultDesktop -Force | Out-Null }
+            foreach ($item in $itemsToSync) {
+                $src = Join-Path $localDesktop $item
+                if (Test-Path $src) { Copy-Item -Path $src -Destination $vaultDesktop -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+            Write-Host "  [OK] Сессия Claude Desktop успешно сохранена в Сейф!" -ForegroundColor Green
+        }
+        if ($hasLocalCli) {
+            if (-not (Test-Path "$vaultCli\.claude")) { New-Item -ItemType Directory -Path "$vaultCli\.claude" -Force | Out-Null }
+            Copy-Item -Path "$localCli\.claude\*" -Destination "$vaultCli\.claude\" -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path "$localCli\.claude.json") { Copy-Item "$localCli\.claude.json" "$vaultCli\.claude.json" -Force -ErrorAction SilentlyContinue }
+            Write-Host "  [OK] Сессии Claude Code CLI успешно сохранены в Сейф!" -ForegroundColor Green
+        }
+        Start-Sleep -Seconds 2
+    } elseif ($vChoice -eq "2") {
+        if ($hasVaultDesktop) {
+            if (-not (Test-Path $localDesktop)) { New-Item -ItemType Directory -Path $localDesktop -Force | Out-Null }
+            foreach ($item in $itemsToSync) {
+                $src = Join-Path $vaultDesktop $item
+                if (Test-Path $src) { Copy-Item -Path $src -Destination $localDesktop -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+            Write-Host "  [OK] Сессия Claude Desktop восстановлена в песочницу!" -ForegroundColor Green
+        }
+        if ($hasVaultCli) {
+            if (-not (Test-Path "$localCli\.claude")) { New-Item -ItemType Directory -Path "$localCli\.claude" -Force | Out-Null }
+            Copy-Item -Path "$vaultCli\.claude\*" -Destination "$localCli\.claude\" -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path "$vaultCli\.claude.json") { Copy-Item "$vaultCli\.claude.json" "$localCli\.claude.json" -Force -ErrorAction SilentlyContinue }
+            Write-Host "  [OK] Сессии Claude Code CLI восстановлены в песочницу!" -ForegroundColor Green
+        }
+        Start-Sleep -Seconds 2
+    }
+}
+
 function Create-DesktopShortcut ([switch]$NoWait) {
     Write-Host "`n[+] Создание ярлыка на Рабочем столе..." -ForegroundColor Cyan
     try {
@@ -423,14 +492,15 @@ while ($true) {
     Write-Host "  [4] Проверить статус Proxy / VPN и Kill-Switch" -ForegroundColor Green
     Write-Host "  [5] Проверить защиту от утечек WebRTC и IP в браузере" -ForegroundColor Magenta
     Write-Host "  [6] Экстренная очистка (выгрузить все процессы и кэш)" -ForegroundColor DarkYellow
-    Write-Host "  [7] Создать / обновить ярлык на Рабочем столе" -ForegroundColor Blue
-    Write-Host "  [8] Установить Claude Desktop (сразу с изоляцией)" -ForegroundColor Green
-    Write-Host "  [9] Установить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
+    Write-Host "  [7] Сейф сессий (Session Vault): бэкап и быстрое восстановление" -ForegroundColor Cyan
+    Write-Host "  [8] Создать / обновить ярлык на Рабочем столе" -ForegroundColor Blue
+    Write-Host "  [9] Установить Claude Desktop (сразу с изоляцией)" -ForegroundColor Green
+    Write-Host "  [10] Установить Claude Code CLI (Терминал песочницы)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  [0] Выход" -ForegroundColor DarkGray
     Write-Host "----------------------------------------------------------------------" -ForegroundColor DarkGray
     
-    $choice = Read-Host "  Выберите действие [0-9]: "
+    $choice = Read-Host "  Выберите действие [0-10]: "
     
     switch ($choice.Trim()) {
         "1" {
@@ -458,12 +528,15 @@ while ($true) {
             Emergency-Cleanup
         }
         "7" {
-            Create-DesktopShortcut
+            Manage-SessionVault
         }
         "8" {
-            Install-ClaudeDesktopWithIsolation
+            Create-DesktopShortcut
         }
         "9" {
+            Install-ClaudeDesktopWithIsolation
+        }
+        "10" {
             Install-ClaudeCodeWithIsolation
         }
         "0" {

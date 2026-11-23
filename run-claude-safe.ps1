@@ -137,18 +137,35 @@ if (-not (Test-Path $sandboxDir)) {
     New-Item -ItemType Directory -Path $sandboxDir -Force | Out-Null
 }
 
-# Smart Detection: проверка наличия существующих сессий CLI в Windows
+# Smart Detection & Universal Vault для Claude Code CLI
 $sandboxCliData = Join-Path $sandboxDir ".claude"
+$sandboxConfig = Join-Path $sandboxDir ".claude.json"
+$vaultCliDir = Join-Path $env:USERPROFILE ".claude-sandbox-vault\cli-profile"
 $hostCliData = Join-Path $env:USERPROFILE ".claude"
+$hostCliConfig = Join-Path $env:USERPROFILE ".claude.json"
+
+# 1. Восстановление из Universal Vault
+if ((-not (Test-Path "$sandboxCliData\projects")) -and (Test-Path "$vaultCliDir\.claude\projects")) {
+    Write-Host "  [*] ОБНАРУЖЕНЫ СЕССИИ CLI В СЕЙФЕ СЕССИЙ (SESSION VAULT)!" -ForegroundColor Green
+    Write-Host "      Автоматическое восстановление проектов и авторизации... " -NoNewline -ForegroundColor Cyan
+    if (-not (Test-Path $sandboxCliData)) { New-Item -ItemType Directory -Path $sandboxCliData -Force | Out-Null }
+    Copy-Item -Path "$vaultCliDir\.claude\*" -Destination "$sandboxCliData\" -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path "$vaultCliDir\.claude.json") {
+        Copy-Item -Path "$vaultCliDir\.claude.json" -Destination $sandboxConfig -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "OK! (Все диалоги и авторизация на месте)" -ForegroundColor Green
+}
+
+# 2. Если в Vault пусто, проверяем Host
 if ((-not (Test-Path "$sandboxCliData\projects")) -and (Test-Path "$hostCliData\projects")) {
     Write-Host ""
     Write-Host "==========================================================" -ForegroundColor Yellow
     Write-Host " [*] ОБНАРУЖЕНЫ СУЩЕСТВУЮЩИЕ СЕССИИ CLAUDE CODE CLI В WINDOWS!" -ForegroundColor Yellow
     Write-Host "==========================================================" -ForegroundColor Yellow
-    Write-Host "  Хотите скопировать историю проектов и сессии в песочницу?" -ForegroundColor Gray
+    Write-Host "  Хотите скопировать историю проектов и авторизацию в песочницу?" -ForegroundColor Gray
     Write-Host "  (Все ваши прошлые диалоги будут доступны по команде /resume)" -ForegroundColor Gray
     Write-Host ""
-    $importChoice = Read-Host "  Скопировать сессии в песочницу? [Y/n] (Enter = Да)"
+    $importChoice = Read-Host "  Скопировать сессии в песочницу и Сейф? [Y/n] (Enter = Да)"
     if ($importChoice -eq "" -or $importChoice -match "^[yYдД]") {
         Write-Host "  [*] Клонирование истории проектов в песочницу... " -NoNewline -ForegroundColor Cyan
         if (-not (Test-Path $sandboxCliData)) { New-Item -ItemType Directory -Path $sandboxCliData -Force | Out-Null }
@@ -156,6 +173,15 @@ if ((-not (Test-Path "$sandboxCliData\projects")) -and (Test-Path "$hostCliData\
         Copy-Item -Path "$hostCliData\file-history" -Destination "$sandboxCliData\" -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path "$hostCliData\settings.json") {
             Copy-Item -Path "$hostCliData\settings.json" -Destination "$sandboxCliData\" -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $hostCliConfig) {
+            Copy-Item -Path $hostCliConfig -Destination $sandboxConfig -Force -ErrorAction SilentlyContinue
+        }
+        # Зеркалируем в Universal Vault
+        if (-not (Test-Path "$vaultCliDir\.claude")) { New-Item -ItemType Directory -Path "$vaultCliDir\.claude" -Force | Out-Null }
+        Copy-Item -Path "$sandboxCliData\*" -Destination "$vaultCliDir\.claude\" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $sandboxConfig) {
+            Copy-Item -Path $sandboxConfig -Destination "$vaultCliDir\.claude.json" -Force -ErrorAction SilentlyContinue
         }
         Write-Host "OK!" -ForegroundColor Green
         Write-Host "  [OK] Все проекты и сессии перенесены!" -ForegroundColor Green
@@ -165,7 +191,6 @@ if ((-not (Test-Path "$sandboxCliData\projects")) -and (Test-Path "$hostCliData\
     Write-Host ""
 }
 
-$sandboxConfig = Join-Path $sandboxDir ".claude.json"
 if (-not (Test-Path $sandboxConfig)) {
     $randomMachineId = [System.Guid]::NewGuid().ToString("N") + [System.Guid]::NewGuid().ToString("N")
     $randomUserId = [System.Guid]::NewGuid().ToString("N") + [System.Guid]::NewGuid().ToString("N")
@@ -252,4 +277,12 @@ try {
 } finally {
     Set-Location $currentFolder
     Stop-Process -Name "claude" -Force -ErrorAction SilentlyContinue
+    # Зеркалирование сессий CLI в Universal Vault
+    if (Test-Path "$sandboxCliData\projects") {
+        if (-not (Test-Path "$vaultCliDir\.claude")) { New-Item -ItemType Directory -Path "$vaultCliDir\.claude" -Force | Out-Null }
+        Copy-Item -Path "$sandboxCliData\*" -Destination "$vaultCliDir\.claude\" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $sandboxConfig) {
+            Copy-Item -Path $sandboxConfig -Destination "$vaultCliDir\.claude.json" -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
