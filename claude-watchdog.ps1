@@ -104,7 +104,7 @@ if ($launcherPid -gt 0) {
                     if ($leaks -and $leaks.Count -gt 0) {
                         # INSTANT EMERGENCY KILL!
                         Stop-Process -Name "claude", "claude-desktop", "chrome-native-host" -Force -ErrorAction SilentlyContinue
-                        taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
+                        & cmd.exe /c "taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T >nul 2>&1"
                         
                         # Show emergency alert window!
                         $alertScript = @'
@@ -139,7 +139,7 @@ Read-Host "  Нажмите Enter для выхода..."
 
 # Forcefully terminate any lingering Claude & native host processes
 Stop-Process -Name "claude", "claude-desktop", "chrome-native-host" -Force -ErrorAction SilentlyContinue
-taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
+& cmd.exe /c "taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T >nul 2>&1"
 
 # Clean up Chromium singleton locks if profile directory was provided
 if ($profileDir) {

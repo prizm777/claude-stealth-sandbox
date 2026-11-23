@@ -87,7 +87,7 @@ function Test-ProxyStatus {
 function Emergency-Cleanup {
     Write-Host "`n[+] Запуск экстренной очистки процессов и блокировок..." -ForegroundColor Cyan
     Stop-Process -Name "claude", "claude-desktop", "chrome-native-host" -Force -ErrorAction SilentlyContinue
-    taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
+    & cmd.exe /c "taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T >nul 2>&1"
     
     $profileDir = Join-Path $PSScriptRoot "data\desktop-profile"
     $lockFiles = @("lockfile", "SingletonLock", "SingletonSocket", "SingletonCookie")

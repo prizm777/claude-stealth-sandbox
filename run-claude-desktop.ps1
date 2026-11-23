@@ -335,7 +335,7 @@ try {
     }
 } finally {
     Stop-Process -Name "claude", "claude-desktop", "chrome-native-host" -Force -ErrorAction SilentlyContinue
-    taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T 2>$null | Out-Null
+    & cmd.exe /c "taskkill /F /IM claude.exe /IM claude-desktop.exe /IM chrome-native-host.exe /T >nul 2>&1"
     foreach ($lf in $lockFiles) {
         $p = Join-Path $profileDir $lf
         if (Test-Path $p) {
